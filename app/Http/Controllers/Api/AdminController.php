@@ -430,4 +430,4 @@ class AdminController extends Controller
             'withdrawal' => $withdrawal->load('business'),
         ]);
     }
-
+}
