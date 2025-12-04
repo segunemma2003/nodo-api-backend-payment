@@ -303,6 +303,93 @@ class BusinessController extends Controller
         return response()->json($withdrawals);
     }
 
+    public function getProfile(Request $request)
+    {
+        $business = $this->getBusiness($request);
+
+        return response()->json([
+            'business' => [
+                'id' => $business->id,
+                'business_name' => $business->business_name,
+                'email' => $business->email,
+                'username' => $business->username,
+                'phone' => $business->phone,
+                'address' => $business->address,
+                'approval_status' => $business->approval_status,
+                'status' => $business->status,
+                'api_token' => $business->api_token,
+                'webhook_url' => $business->webhook_url,
+                'kyc_documents' => $business->kyc_documents,
+            ],
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $business = $this->getBusiness($request);
+
+        $request->validate([
+            'business_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:businesses,email,' . $business->id,
+            'username' => 'sometimes|string|unique:businesses,username,' . $business->id,
+            'password' => 'sometimes|string|min:8',
+            'phone' => 'nullable|string',
+            'address' => 'nullable|string',
+            'webhook_url' => 'nullable|url',
+            'kyc_documents' => 'nullable|array',
+            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        if ($request->has('business_name')) {
+            $business->business_name = $request->business_name;
+        }
+        if ($request->has('email')) {
+            $business->email = $request->email;
+        }
+        if ($request->has('username')) {
+            $business->username = $request->username;
+        }
+        if ($request->has('password')) {
+            $business->password = Hash::make($request->password);
+        }
+        if ($request->has('phone')) {
+            $business->phone = $request->phone;
+        }
+        if ($request->has('address')) {
+            $business->address = $request->address;
+        }
+        if ($request->has('webhook_url')) {
+            $business->webhook_url = $request->webhook_url;
+        }
+
+        if ($request->hasFile('kyc_documents')) {
+            $kycPaths = $business->kyc_documents ?? [];
+            foreach ($request->file('kyc_documents') as $document) {
+                $tempPath = $document->store('temp/kyc_documents', 'local');
+                $s3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempPath);
+                $kycPaths[] = $s3Path;
+                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $business, 'kyc_documents');
+            }
+            $business->kyc_documents = $kycPaths;
+        }
+
+        $business->save();
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'business' => [
+                'id' => $business->id,
+                'business_name' => $business->business_name,
+                'email' => $business->email,
+                'username' => $business->username,
+                'phone' => $business->phone,
+                'address' => $business->address,
+                'webhook_url' => $business->webhook_url,
+                'kyc_documents' => $business->kyc_documents,
+            ],
+        ]);
+    }
+
     protected function getBusiness(Request $request): Business
     {
         $businessId = $request->input('business_id') ?? $request->user()?->id;

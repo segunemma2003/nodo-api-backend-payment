@@ -36,6 +36,7 @@ Route::prefix('customer')->group(function () {
     Route::get('/transactions', [CustomerDashboardController::class, 'getTransactions']);
     Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
     Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
+    Route::put('/profile', [CustomerDashboardController::class, 'updateProfile']);
 });
 
 // Business Dashboard Routes
@@ -43,6 +44,7 @@ Route::prefix('business')->group(function () {
     Route::get('/dashboard', [BusinessController::class, 'getDashboard']);
     Route::get('/invoices', [BusinessController::class, 'getInvoices']);
     Route::get('/profile', [BusinessController::class, 'getProfile']);
+    Route::put('/profile', [BusinessController::class, 'updateProfile']);
     Route::post('/generate-api-token', [BusinessController::class, 'generateApiToken']);
     Route::post('/submit-invoice', [BusinessController::class, 'submitInvoice']);
     Route::post('/check-customer-credit', [BusinessController::class, 'checkCustomerCredit']);

@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Services\InterestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
 
 class CustomerDashboardController extends Controller
 {
@@ -144,14 +145,86 @@ class CustomerDashboardController extends Controller
         return response()->json([
             'customer' => [
                 'id' => $customer->id,
+                'account_number' => $customer->account_number,
                 'business_name' => $customer->business_name,
                 'email' => $customer->email,
+                'username' => $customer->username,
                 'phone' => $customer->phone,
                 'address' => $customer->address,
                 'credit_limit' => $customer->credit_limit,
                 'current_balance' => $customer->current_balance,
                 'available_balance' => $customer->available_balance,
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+                'kyc_documents' => $customer->kyc_documents,
                 'status' => $customer->status,
+            ],
+        ]);
+    }
+
+    /**
+     * Update customer profile
+     */
+    public function updateProfile(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+
+        $request->validate([
+            'business_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:customers,email,' . $customer->id,
+            'username' => 'sometimes|string|unique:customers,username,' . $customer->id,
+            'password' => 'sometimes|string|min:8',
+            'phone' => 'nullable|string',
+            'address' => 'nullable|string',
+            'kyc_documents' => 'nullable|array',
+            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        if ($request->has('business_name')) {
+            $customer->business_name = $request->business_name;
+        }
+        if ($request->has('email')) {
+            $customer->email = $request->email;
+        }
+        if ($request->has('username')) {
+            $customer->username = $request->username;
+        }
+        if ($request->has('password')) {
+            $customer->password = Hash::make($request->password);
+        }
+        if ($request->has('phone')) {
+            $customer->phone = $request->phone;
+        }
+        if ($request->has('address')) {
+            $customer->address = $request->address;
+        }
+
+        if ($request->hasFile('kyc_documents')) {
+            $kycPaths = $customer->kyc_documents ?? [];
+            foreach ($request->file('kyc_documents') as $document) {
+                $tempPath = $document->store('temp/kyc_documents', 'local');
+                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
+                $kycPaths[] = $s3Path;
+                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+            }
+            $customer->kyc_documents = $kycPaths;
+        }
+
+        $customer->save();
+        Cache::forget('customer_credit_' . $customer->id);
+        Cache::forget('customer_invoices_' . $customer->id);
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'customer' => [
+                'id' => $customer->id,
+                'account_number' => $customer->account_number,
+                'business_name' => $customer->business_name,
+                'email' => $customer->email,
+                'username' => $customer->username,
+                'phone' => $customer->phone,
+                'address' => $customer->address,
+                'kyc_documents' => $customer->kyc_documents,
             ],
         ]);
     }
