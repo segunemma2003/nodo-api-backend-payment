@@ -284,7 +284,48 @@ X-API-Token: your_business_api_token_here
     "credit_limit": "100000.00",
     "current_balance": "25000.00",
     "available_balance": "75000.00",
+    "virtual_account_number": "1234567890",
+    "virtual_account_bank": "Sterling Bank",
+    "kyc_documents": ["kyc_documents/customer_1/doc1.pdf"],
     "status": "active"
+  }
+}
+```
+
+### 7. Update Profile
+**PUT** `/api/customer/profile`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request Body (all fields optional, only include fields to update):**
+```json
+{
+  "business_name": "Updated Company Name",
+  "email": "newemail@example.com",
+  "username": "newusername",
+  "password": "NewPassword123!",
+  "phone": "08098765432",
+  "address": "New Address",
+  "kyc_documents": []
+}
+```
+
+**Note:** For `kyc_documents`, send as multipart/form-data file uploads. New KYC documents will be added to existing ones.
+
+**Response (200 OK):**
+```json
+{
+  "message": "Profile updated successfully",
+  "customer": {
+    "id": 1,
+    "account_number": "1234567890123456",
+    "business_name": "Updated Company Name",
+    "email": "newemail@example.com",
+    "username": "newusername",
+    "phone": "08098765432",
+    "address": "New Address",
+    "kyc_documents": ["kyc_documents/customer_1/doc1.pdf", "kyc_documents/customer_1/doc2.pdf"]
   }
 }
 ```
@@ -538,7 +579,47 @@ X-API-Token: your_business_api_token_here
     "approval_status": "approved",
     "status": "active",
     "api_token": "nodo_biz_abc123...",
-    "webhook_url": "https://example.com/webhook"
+    "webhook_url": "https://example.com/webhook",
+    "kyc_documents": ["kyc_documents/business_1/doc1.pdf"]
+  }
+}
+```
+
+### 9. Update Profile
+**PUT** `/api/business/profile`
+
+**Headers:**
+- `Authorization: Bearer {token}`
+
+**Request Body (all fields optional, only include fields to update):**
+```json
+{
+  "business_name": "Updated Store Name",
+  "email": "newemail@example.com",
+  "username": "newusername",
+  "password": "NewPassword123!",
+  "phone": "08098765432",
+  "address": "New Address",
+  "webhook_url": "https://newwebhook.com/webhook",
+  "kyc_documents": []
+}
+```
+
+**Note:** For `kyc_documents`, send as multipart/form-data file uploads. New KYC documents will be added to existing ones.
+
+**Response (200 OK):**
+```json
+{
+  "message": "Profile updated successfully",
+  "business": {
+    "id": 1,
+    "business_name": "Updated Store Name",
+    "email": "newemail@example.com",
+    "username": "newusername",
+    "phone": "08098765432",
+    "address": "New Address",
+    "webhook_url": "https://newwebhook.com/webhook",
+    "kyc_documents": ["kyc_documents/business_1/doc1.pdf", "kyc_documents/business_1/doc2.pdf"]
   }
 }
 ```

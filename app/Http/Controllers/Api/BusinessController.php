@@ -303,26 +303,26 @@ class BusinessController extends Controller
         return response()->json($withdrawals);
     }
 
-    public function getProfile(Request $request)
-    {
-        $business = $this->getBusiness($request);
+    // public function getProfile(Request $request)
+    // {
+    //     $business = $this->getBusiness($request);
 
-        return response()->json([
-            'business' => [
-                'id' => $business->id,
-                'business_name' => $business->business_name,
-                'email' => $business->email,
-                'username' => $business->username,
-                'phone' => $business->phone,
-                'address' => $business->address,
-                'approval_status' => $business->approval_status,
-                'status' => $business->status,
-                'api_token' => $business->api_token,
-                'webhook_url' => $business->webhook_url,
-                'kyc_documents' => $business->kyc_documents,
-            ],
-        ]);
-    }
+    //     return response()->json([
+    //         'business' => [
+    //             'id' => $business->id,
+    //             'business_name' => $business->business_name,
+    //             'email' => $business->email,
+    //             'username' => $business->username,
+    //             'phone' => $business->phone,
+    //             'address' => $business->address,
+    //             'approval_status' => $business->approval_status,
+    //             'status' => $business->status,
+    //             'api_token' => $business->api_token,
+    //             'webhook_url' => $business->webhook_url,
+    //             'kyc_documents' => $business->kyc_documents,
+    //         ],
+    //     ]);
+    // }
 
     public function updateProfile(Request $request)
     {
