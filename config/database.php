@@ -163,8 +163,9 @@ return [
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
-            'context' => [
-                'stream' => [
+            'parameters' => [
+                'scheme' => parse_url(env('REDIS_URL', ''), PHP_URL_SCHEME) ?: 'tcp',
+                'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
                 ],
@@ -182,8 +183,9 @@ return [
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
-            'context' => [
-                'stream' => [
+            'parameters' => [
+                'scheme' => parse_url(env('REDIS_URL', ''), PHP_URL_SCHEME) ?: 'tcp',
+                'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
                 ],
