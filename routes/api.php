@@ -57,6 +57,7 @@ Route::prefix('admin')->group(function () {
     Route::post('/customers', [AdminController::class, 'createCustomer']);
     Route::get('/customers', [AdminController::class, 'getCustomers']);
     Route::get('/customers/{id}', [AdminController::class, 'getCustomer']);
+    Route::put('/customers/{id}', [AdminController::class, 'updateCustomer']);
     Route::patch('/customers/{id}/credit-limit', [AdminController::class, 'updateCreditLimit']);
     Route::patch('/customers/{id}/status', [AdminController::class, 'updateCustomerStatus']);
     
@@ -69,6 +70,7 @@ Route::prefix('admin')->group(function () {
     Route::post('/businesses', [AdminController::class, 'createBusiness']);
     Route::get('/businesses', [AdminController::class, 'getBusinesses']);
     Route::get('/businesses/{id}', [AdminController::class, 'getBusiness']);
+    Route::put('/businesses/{id}', [AdminController::class, 'updateBusiness']);
     Route::patch('/businesses/{id}/approve', [AdminController::class, 'approveBusiness']);
     Route::patch('/businesses/{id}/status', [AdminController::class, 'updateBusinessStatus']);
     

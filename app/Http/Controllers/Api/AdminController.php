@@ -152,6 +152,138 @@ class AdminController extends Controller
         ]);
     }
 
+    public function updateCustomer(Request $request, $id)
+    {
+        $customer = Customer::findOrFail($id);
+
+        $request->validate([
+            'business_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:customers,email,' . $id,
+            'username' => 'sometimes|string|unique:customers,username,' . $id,
+            'password' => 'sometimes|string|min:8',
+            'phone' => 'nullable|string',
+            'address' => 'nullable|string',
+            'minimum_purchase_amount' => 'sometimes|numeric|min:0',
+            'payment_plan_duration' => 'sometimes|integer|min:1',
+            'virtual_account_number' => 'nullable|string|unique:customers,virtual_account_number,' . $id,
+            'virtual_account_bank' => 'nullable|string',
+            'kyc_documents' => 'nullable|array',
+            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        if ($request->has('business_name')) {
+            $customer->business_name = $request->business_name;
+        }
+        if ($request->has('email')) {
+            $customer->email = $request->email;
+        }
+        if ($request->has('username')) {
+            $customer->username = $request->username;
+        }
+        if ($request->has('password')) {
+            $customer->password = Hash::make($request->password);
+        }
+        if ($request->has('phone')) {
+            $customer->phone = $request->phone;
+        }
+        if ($request->has('address')) {
+            $customer->address = $request->address;
+        }
+        if ($request->has('minimum_purchase_amount')) {
+            $customer->minimum_purchase_amount = $request->minimum_purchase_amount;
+        }
+        if ($request->has('payment_plan_duration')) {
+            $customer->payment_plan_duration = $request->payment_plan_duration;
+        }
+        if ($request->has('virtual_account_number')) {
+            $customer->virtual_account_number = $request->virtual_account_number;
+        }
+        if ($request->has('virtual_account_bank')) {
+            $customer->virtual_account_bank = $request->virtual_account_bank;
+        }
+
+        if ($request->has('minimum_purchase_amount') || $request->has('payment_plan_duration')) {
+            $this->creditLimitService->updateCustomerCreditLimit($customer);
+        }
+
+        if ($request->hasFile('kyc_documents')) {
+            $kycPaths = $customer->kyc_documents ?? [];
+            foreach ($request->file('kyc_documents') as $document) {
+                $tempPath = $document->store('temp/kyc_documents', 'local');
+                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
+                $kycPaths[] = $s3Path;
+                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+            }
+            $customer->kyc_documents = $kycPaths;
+        }
+
+        $customer->save();
+        Cache::forget('admin_customer_' . $id);
+        Cache::forget('admin_customers_page_*');
+
+        return response()->json([
+            'message' => 'Customer updated successfully',
+            'customer' => $customer,
+        ]);
+    }
+
+    public function updateBusiness(Request $request, $id)
+    {
+        $business = Business::findOrFail($id);
+
+        $request->validate([
+            'business_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:businesses,email,' . $id,
+            'username' => 'sometimes|string|unique:businesses,username,' . $id,
+            'password' => 'sometimes|string|min:8',
+            'phone' => 'nullable|string',
+            'address' => 'nullable|string',
+            'webhook_url' => 'nullable|url',
+            'kyc_documents' => 'nullable|array',
+            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        if ($request->has('business_name')) {
+            $business->business_name = $request->business_name;
+        }
+        if ($request->has('email')) {
+            $business->email = $request->email;
+        }
+        if ($request->has('username')) {
+            $business->username = $request->username;
+        }
+        if ($request->has('password')) {
+            $business->password = Hash::make($request->password);
+        }
+        if ($request->has('phone')) {
+            $business->phone = $request->phone;
+        }
+        if ($request->has('address')) {
+            $business->address = $request->address;
+        }
+        if ($request->has('webhook_url')) {
+            $business->webhook_url = $request->webhook_url;
+        }
+
+        if ($request->hasFile('kyc_documents')) {
+            $kycPaths = $business->kyc_documents ?? [];
+            foreach ($request->file('kyc_documents') as $document) {
+                $tempPath = $document->store('temp/kyc_documents', 'local');
+                $s3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempPath);
+                $kycPaths[] = $s3Path;
+                UploadFileToS3Job::dispatch($tempPath, $s3Path, $business, 'kyc_documents');
+            }
+            $business->kyc_documents = $kycPaths;
+        }
+
+        $business->save();
+
+        return response()->json([
+            'message' => 'Business updated successfully',
+            'business' => $business,
+        ]);
+    }
+
     public function getAllInvoices(Request $request)
     {
         $this->interestService->updateAllInvoices();
