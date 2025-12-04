@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CustomerDashboardController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\PayWithNodopayController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\TestController;
 
 /*
 |--------------------------------------------------------------------------
@@ -93,4 +94,7 @@ Route::prefix('payments')->group(function () {
     Route::post('/record', [PaymentController::class, 'recordPayment']);
     Route::get('/history/{customerId}', [PaymentController::class, 'getPaymentHistory']);
 });
+
+// Test Routes
+Route::get('/test/s3', [TestController::class, 'testS3']);
 
