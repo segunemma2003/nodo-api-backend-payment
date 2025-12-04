@@ -29,7 +29,7 @@ class PayWithNodopayController extends Controller
         // Authentication handled by middleware
 
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'account_number' => 'required|string|size:16|exists:customers,account_number',
             'customer_email' => 'required|email',
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
@@ -58,7 +58,7 @@ class PayWithNodopayController extends Controller
                 ], 400);
             }
 
-            $customer = Customer::findOrFail($request->customer_id);
+            $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
 
             if ($customer->email !== $request->customer_email) {
                 return response()->json([
@@ -112,6 +112,7 @@ class PayWithNodopayController extends Controller
 
             $this->webhookService->sendWebhook($business, 'invoice.created', [
                 'invoice_id' => $invoice->invoice_id,
+                'account_number' => $customer->account_number,
                 'customer_id' => $customer->id,
                 'amount' => $invoice->principal_amount,
                 'status' => $invoice->status,
@@ -146,7 +147,7 @@ class PayWithNodopayController extends Controller
                 $this->webhookService->sendError($business, [
                     'error' => 'Purchase request failed',
                     'message' => $e->getMessage(),
-                    'customer_id' => $request->customer_id ?? null,
+                    'account_number' => $request->account_number ?? null,
                     'amount' => $request->amount ?? null,
                 ]);
             }
@@ -164,11 +165,11 @@ class PayWithNodopayController extends Controller
         // Authentication handled by middleware
 
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'account_number' => 'required|string|size:16|exists:customers,account_number',
             'amount' => 'required|numeric|min:0.01',
         ]);
 
-        $customer = Customer::findOrFail($request->customer_id);
+        $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
         $customer->updateBalances();
 
         $hasCredit = $this->invoiceService->hasAvailableCredit($customer, $request->amount);
@@ -185,12 +186,12 @@ class PayWithNodopayController extends Controller
     public function getCustomerDetails(Request $request)
     {
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'account_number' => 'required|string|size:16|exists:customers,account_number',
             'customer_email' => 'nullable|email',
             'customer_phone' => 'nullable|string',
         ]);
 
-        $customer = Customer::findOrFail($request->customer_id);
+        $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
 
         if ($request->has('customer_email') && $customer->email !== $request->customer_email) {
             return response()->json([

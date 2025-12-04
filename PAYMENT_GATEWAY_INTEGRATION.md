@@ -84,15 +84,19 @@ Or as a query parameter:
 
 Before allowing customer to proceed with "Pay with Nodopay", check if they have sufficient credit.
 
+**Important**: Customers will enter their **16-digit account number** at checkout, not their customer ID. The account number is a unique identifier assigned to each customer when their account is created.
+
 **Endpoint**: `POST /api/pay-with-nodopay/check-credit`
 
 **Request**:
 ```json
 {
-  "customer_id": 123,
+  "account_number": "1234567890123456",
   "amount": 50000.00
 }
 ```
+
+**Note**: `account_number` must be exactly 16 digits and must exist in the system.
 
 **Response**:
 ```json
@@ -108,7 +112,7 @@ Before allowing customer to proceed with "Pay with Nodopay", check if they have 
 **Integration Example**:
 ```javascript
 // Check credit before showing "Pay with Nodopay" option
-async function checkNodopayCredit(customerId, amount) {
+async function checkNodopayCredit(accountNumber, amount) {
   const response = await fetch('https://api.nodopay.com/api/pay-with-nodopay/check-credit', {
     method: 'POST',
     headers: {
@@ -116,7 +120,7 @@ async function checkNodopayCredit(customerId, amount) {
       'X-API-Token': 'nodo_biz_your_api_token_here'
     },
     body: JSON.stringify({
-      customer_id: customerId,
+      account_number: accountNumber,
       amount: amount
     })
   });
@@ -137,7 +141,7 @@ When customer clicks "Pay with Nodopay", call the purchase endpoint.
 **Request**:
 ```json
 {
-  "customer_id": 123,
+  "account_number": "1234567890123456",
   "customer_email": "customer@example.com",
   "amount": 50000.00,
   "purchase_date": "2024-01-15",
@@ -158,6 +162,14 @@ When customer clicks "Pay with Nodopay", call the purchase endpoint.
   ]
 }
 ```
+
+**Required Fields**:
+- `account_number` (string, 16 digits): The customer's unique 16-digit account number (what they enter at checkout)
+- `customer_email` (string): Must match the email on the customer's account
+- `amount` (decimal): Total purchase amount
+- `items` (array): List of purchased items (required)
+
+**Note**: The `account_number` is what customers will type at checkout, not the internal customer ID.
 
 **Items Array (Required):**
 - `items`: Array of purchased items
@@ -205,7 +217,7 @@ async function processNodopayPayment(orderData) {
         'X-API-Token': 'nodo_biz_your_api_token_here'
       },
       body: JSON.stringify({
-        customer_id: orderData.customerId,
+        account_number: orderData.accountNumber,
         customer_email: orderData.customerEmail,
         amount: orderData.totalAmount,
         purchase_date: new Date().toISOString().split('T')[0],
@@ -240,7 +252,12 @@ async function processNodopayPayment(orderData) {
 
 You can retrieve customer credit information to display to customers.
 
-**Endpoint**: `GET /api/pay-with-nodopay/customer?customer_id=123&customer_email=customer@example.com`
+**Endpoint**: `GET /api/pay-with-nodopay/customer?account_number=1234567890123456&customer_email=customer@example.com`
+
+**Query Parameters**:
+- `account_number` (required): 16-digit customer account number
+- `customer_email` (optional): Customer email for verification
+- `customer_phone` (optional): Customer phone for verification
 
 **Response**:
 ```json
@@ -267,8 +284,8 @@ You can retrieve customer credit information to display to customers.
 
 ```javascript
 // 1. On checkout page, check if customer has Nodopay account
-async function showNodopayOption(customerId, orderTotal) {
-  const hasCredit = await checkNodopayCredit(customerId, orderTotal);
+async function showNodopayOption(accountNumber, orderTotal) {
+  const hasCredit = await checkNodopayCredit(accountNumber, orderTotal);
   
   if (hasCredit) {
     // Show "Pay with Nodopay" button
@@ -279,10 +296,11 @@ async function showNodopayOption(customerId, orderTotal) {
 // 2. When customer clicks "Pay with Nodopay"
 document.getElementById('nodopay-button').addEventListener('click', async () => {
   const orderData = {
-    customerId: getCustomerId(),
+    accountNumber: getAccountNumber(),
     customerEmail: getCustomerEmail(),
     totalAmount: getOrderTotal(),
-    orderId: getOrderId()
+    orderId: getOrderId(),
+    items: getOrderItems()
   };
   
   // Show loading state
@@ -312,22 +330,23 @@ class NodopayIntegration {
     private $apiToken = 'nodo_biz_your_api_token_here';
     private $baseUrl = 'https://api.nodopay.com/api';
     
-    public function checkCredit($customerId, $amount) {
+    public function checkCredit($accountNumber, $amount) {
         $response = $this->makeRequest('POST', '/pay-with-nodopay/check-credit', [
-            'customer_id' => $customerId,
+            'account_number' => $accountNumber,
             'amount' => $amount
         ]);
         
         return $response['has_credit'] ?? false;
     }
     
-    public function processPurchase($customerId, $customerEmail, $amount, $orderReference) {
+    public function processPurchase($accountNumber, $customerEmail, $amount, $orderReference, $items = []) {
         $response = $this->makeRequest('POST', '/pay-with-nodopay/purchase', [
-            'customer_id' => $customerId,
+            'account_number' => $accountNumber,
             'customer_email' => $customerEmail,
             'amount' => $amount,
             'purchase_date' => date('Y-m-d'),
-            'order_reference' => $orderReference
+            'order_reference' => $orderReference,
+            'items' => $items
         ]);
         
         return $response;
@@ -360,16 +379,17 @@ class NodopayIntegration {
 $nodopay = new NodopayIntegration();
 
 // Check credit before checkout
-if ($nodopay->checkCredit($customerId, $orderTotal)) {
+if ($nodopay->checkCredit($accountNumber, $orderTotal)) {
     // Show "Pay with Nodopay" option
 }
 
 // Process payment
 $result = $nodopay->processPurchase(
-    $customerId,
+    $accountNumber,
     $customerEmail,
     $orderTotal,
-    $orderId
+    $orderId,
+    $items
 );
 
 if ($result['success']) {
@@ -403,6 +423,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
   "timestamp": "2024-01-15T10:30:00Z",
   "data": {
     "invoice_id": "NODO-ABC123",
+    "account_number": "1234567890123456",
     "customer_id": 123,
     "amount": 50000.00,
     "status": "pending",
@@ -427,6 +448,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
     "payment_reference": "PAY-XYZ789",
     "invoice_id": "NODO-ABC123",
     "amount": 25000.00,
+    "account_number": "1234567890123456",
     "customer_id": 123,
     "status": "completed"
   }
@@ -449,6 +471,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
     "invoice_id": "NODO-ABC123",
     "old_status": "pending",
     "new_status": "in_grace",
+    "account_number": "1234567890123456",
     "customer_id": 123
   }
 }
@@ -467,7 +490,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
   "data": {
     "error": "Purchase request failed",
     "message": "Insufficient credit available",
-    "customer_id": 123,
+    "account_number": "1234567890123456",
     "amount": 50000.00
   }
 }
@@ -506,7 +529,7 @@ function handleNodopayWebhook() {
             // Update your order status
             updateOrderStatus($data['order_reference'], 'paid');
             // Send confirmation email to customer
-            sendOrderConfirmation($data['customer_id']);
+            sendOrderConfirmation($data['account_number']);
             break;
             
         case 'payment.received':
@@ -588,13 +611,13 @@ function handleNodopayWebhook() {
 Use test customer IDs and amounts to test integration:
 
 **Test Customer**:
-- Customer ID: Use a test customer created by admin
+- Account Number: Use a test customer's 16-digit account number created by admin
 - Email: Must match customer record
 - Amount: Use small amounts for testing
 
 **Test Flow**:
 1. Create test customer in Nodopay admin panel
-2. Use test customer ID in your integration
+2. Use test customer's account_number in your integration
 3. Test credit check endpoint
 4. Test purchase endpoint with small amounts
 5. Verify webhook notifications
@@ -619,7 +642,7 @@ Before showing "Pay with Nodopay" option, check credit availability:
 
 ```javascript
 // Good practice
-const hasCredit = await checkNodopayCredit(customerId, orderTotal);
+const hasCredit = await checkNodopayCredit(accountNumber, orderTotal);
 if (hasCredit) {
   showNodopayOption();
 }
@@ -752,9 +775,9 @@ class NodopayCheckout {
     this.baseUrl = 'https://api.nodopay.com/api';
   }
   
-  async initializeCheckout(customerId, orderTotal) {
+  async initializeCheckout(accountNumber, orderTotal) {
     // Step 1: Check credit
-    const creditCheck = await this.checkCredit(customerId, orderTotal);
+    const creditCheck = await this.checkCredit(accountNumber, orderTotal);
     
     if (!creditCheck.has_credit) {
       return {
@@ -771,7 +794,7 @@ class NodopayCheckout {
     };
   }
   
-  async processPayment(customerId, customerEmail, amount, orderId) {
+  async processPayment(accountNumber, customerEmail, amount, orderId, items = []) {
     try {
       const response = await fetch(`${this.baseUrl}/pay-with-nodopay/purchase`, {
         method: 'POST',
@@ -780,11 +803,12 @@ class NodopayCheckout {
           'X-API-Token': this.apiToken
         },
         body: JSON.stringify({
-          customer_id: customerId,
+          account_number: accountNumber,
           customer_email: customerEmail,
           amount: amount,
           purchase_date: new Date().toISOString().split('T')[0],
-          order_reference: orderId
+          order_reference: orderId,
+          items: items
         })
       });
       
@@ -811,7 +835,7 @@ class NodopayCheckout {
     }
   }
   
-  async checkCredit(customerId, amount) {
+  async checkCredit(accountNumber, amount) {
     const response = await fetch(`${this.baseUrl}/pay-with-nodopay/check-credit`, {
       method: 'POST',
       headers: {
@@ -819,7 +843,7 @@ class NodopayCheckout {
         'X-API-Token': this.apiToken
       },
       body: JSON.stringify({
-        customer_id: customerId,
+        account_number: accountNumber,
         amount: amount
       })
     });
@@ -832,17 +856,18 @@ class NodopayCheckout {
 const nodopay = new NodopayCheckout('nodo_biz_your_api_token_here');
 
 // On checkout page load
-const checkout = await nodopay.initializeCheckout(customerId, orderTotal);
+const checkout = await nodopay.initializeCheckout(accountNumber, orderTotal);
 if (checkout.available) {
   showNodopayButton();
 }
 
 // On "Pay with Nodopay" click
 const result = await nodopay.processPayment(
-  customerId,
+  accountNumber,
   customerEmail,
   orderTotal,
-  orderId
+  orderId,
+  orderItems
 );
 
 if (result.success) {
