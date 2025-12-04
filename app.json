@@ -1,0 +1,104 @@
+{
+  "name": "Nodopay API",
+  "description": "Nodopay financing platform API",
+  "repository": "https://github.com/yourusername/nodopay-api",
+  "keywords": ["laravel", "api", "financing", "nodopay"],
+  "success_url": "/api/up",
+  "env": {
+    "APP_ENV": {
+      "description": "Application environment",
+      "value": "production"
+    },
+    "APP_DEBUG": {
+      "description": "Application debug mode",
+      "value": "false"
+    },
+    "APP_KEY": {
+      "description": "Application encryption key",
+      "generator": "secret"
+    },
+    "DB_CONNECTION": {
+      "description": "Database connection type",
+      "value": "pgsql"
+    },
+    "QUEUE_CONNECTION": {
+      "description": "Queue connection type",
+      "value": "database"
+    },
+    "FILESYSTEM_DISK": {
+      "description": "Filesystem disk",
+      "value": "s3"
+    },
+    "AWS_ACCESS_KEY_ID": {
+      "description": "AWS Access Key ID for S3",
+      "required": true
+    },
+    "AWS_SECRET_ACCESS_KEY": {
+      "description": "AWS Secret Access Key for S3",
+      "required": true
+    },
+    "AWS_DEFAULT_REGION": {
+      "description": "AWS Region for S3",
+      "value": "us-east-1"
+    },
+    "AWS_BUCKET": {
+      "description": "AWS S3 Bucket name",
+      "required": true
+    },
+    "MAIL_MAILER": {
+      "description": "Mail driver",
+      "value": "smtp"
+    },
+    "MAIL_HOST": {
+      "description": "Mail host",
+      "required": true
+    },
+    "MAIL_PORT": {
+      "description": "Mail port",
+      "value": "587"
+    },
+    "MAIL_USERNAME": {
+      "description": "Mail username",
+      "required": true
+    },
+    "MAIL_PASSWORD": {
+      "description": "Mail password",
+      "required": true
+    },
+    "MAIL_ENCRYPTION": {
+      "description": "Mail encryption",
+      "value": "tls"
+    },
+    "MAIL_FROM_ADDRESS": {
+      "description": "Mail from address",
+      "required": true
+    },
+    "MAIL_FROM_NAME": {
+      "description": "Mail from name",
+      "value": "Nodopay"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "standard-1x"
+    },
+    "worker": {
+      "quantity": 1,
+      "size": "standard-1x"
+    }
+  },
+  "addons": [
+    "heroku-postgresql:essential-0",
+    "scheduler:standard"
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/php"
+    }
+  ],
+  "scripts": {
+    "postdeploy": "php artisan migrate --force && php artisan storage:link"
+  }
+}
+

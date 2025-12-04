@@ -1,0 +1,96 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\CustomerDashboardController;
+use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\PayWithNodopayController;
+use App\Http\Controllers\Api\PaymentController;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register API routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "api" middleware group. Make something great!
+|
+*/
+
+// Authentication Routes
+Route::prefix('auth')->group(function () {
+    Route::post('/customer/login', [AuthController::class, 'customerLogin']);
+    Route::post('/business/login', [BusinessController::class, 'login']);
+    Route::post('/admin/login', [AuthController::class, 'adminLogin']);
+});
+
+// Customer Dashboard Routes
+Route::prefix('customer')->group(function () {
+    Route::get('/credit-overview', [CustomerDashboardController::class, 'getCreditOverview']);
+    Route::get('/invoices', [CustomerDashboardController::class, 'getInvoices']);
+    Route::get('/invoices/{invoiceId}', [CustomerDashboardController::class, 'getInvoice']);
+    Route::get('/transactions', [CustomerDashboardController::class, 'getTransactions']);
+    Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
+    Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
+});
+
+// Business Dashboard Routes
+Route::prefix('business')->group(function () {
+    Route::get('/dashboard', [BusinessController::class, 'getDashboard']);
+    Route::get('/invoices', [BusinessController::class, 'getInvoices']);
+    Route::get('/profile', [BusinessController::class, 'getProfile']);
+    Route::post('/generate-api-token', [BusinessController::class, 'generateApiToken']);
+    Route::post('/submit-invoice', [BusinessController::class, 'submitInvoice']);
+    Route::post('/check-customer-credit', [BusinessController::class, 'checkCustomerCredit']);
+    Route::get('/transactions', [BusinessController::class, 'getTransactions']);
+    Route::post('/withdrawals/request', [BusinessController::class, 'requestWithdrawal']);
+    Route::get('/withdrawals', [BusinessController::class, 'getWithdrawals']);
+});
+
+// Admin Panel Routes
+Route::prefix('admin')->group(function () {
+    // Customer Management
+    Route::post('/customers', [AdminController::class, 'createCustomer']);
+    Route::get('/customers', [AdminController::class, 'getCustomers']);
+    Route::get('/customers/{id}', [AdminController::class, 'getCustomer']);
+    Route::patch('/customers/{id}/credit-limit', [AdminController::class, 'updateCreditLimit']);
+    Route::patch('/customers/{id}/status', [AdminController::class, 'updateCustomerStatus']);
+    
+    // Invoice Management
+    Route::get('/invoices', [AdminController::class, 'getAllInvoices']);
+    Route::patch('/invoices/{id}/status', [AdminController::class, 'updateInvoiceStatus']);
+    Route::patch('/invoices/{id}/mark-paid', [AdminController::class, 'markInvoicePaid']);
+    
+    // Business Management
+    Route::post('/businesses', [AdminController::class, 'createBusiness']);
+    Route::get('/businesses', [AdminController::class, 'getBusinesses']);
+    Route::get('/businesses/{id}', [AdminController::class, 'getBusiness']);
+    Route::patch('/businesses/{id}/approve', [AdminController::class, 'approveBusiness']);
+    Route::patch('/businesses/{id}/status', [AdminController::class, 'updateBusinessStatus']);
+    
+    // Dashboard Statistics
+    Route::get('/dashboard/stats', [AdminController::class, 'getDashboardStats']);
+    
+    // Withdrawal Management
+    Route::get('/withdrawals', [AdminController::class, 'getAllWithdrawals']);
+    Route::patch('/withdrawals/{id}/approve', [AdminController::class, 'approveWithdrawal']);
+    Route::patch('/withdrawals/{id}/process', [AdminController::class, 'processWithdrawal']);
+});
+
+// Pay with Nodopay API (External Integration)
+Route::prefix('pay-with-nodopay')->middleware('api.token')->group(function () {
+    Route::post('/purchase', [PayWithNodopayController::class, 'purchaseRequest']);
+    Route::post('/check-credit', [PayWithNodopayController::class, 'checkCredit']);
+    Route::get('/customer', [PayWithNodopayController::class, 'getCustomerDetails']);
+});
+
+// Payment Processing Routes
+Route::prefix('payments')->group(function () {
+    Route::post('/webhook', [PaymentController::class, 'paymentWebhook']);
+    Route::post('/record', [PaymentController::class, 'recordPayment']);
+    Route::get('/history/{customerId}', [PaymentController::class, 'getPaymentHistory']);
+});
+

@@ -1,0 +1,3 @@
+# Heroku requires this file in root for proper routing
+# This file is used by Heroku's Apache buildpack
+
