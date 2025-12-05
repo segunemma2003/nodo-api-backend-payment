@@ -61,6 +61,7 @@ class InvoiceCheckoutController extends Controller
     {
         $request->validate([
             'account_number' => 'required|string|digits:16|exists:customers,account_number',
+            'cvv' => 'required|string|size:3',
             'pin' => 'required|string|size:4',
         ]);
 
@@ -74,6 +75,12 @@ class InvoiceCheckoutController extends Controller
         }
 
         $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
+
+        if (!$customer->verifyCvv($request->cvv)) {
+            return response()->json([
+                'message' => 'Invalid CVV',
+            ], 400);
+        }
 
         if (!$customer->verifyPinForPayment($request->pin)) {
             return response()->json([

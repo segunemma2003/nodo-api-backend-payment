@@ -1292,6 +1292,7 @@ These endpoints are for external integrations (e.g., e-commerce platforms) to in
 {
   "account_number": "1234567890123456",
   "customer_email": "customer@example.com",
+  "cvv": "123",
   "pin": "1234",
   "amount": 50000.00,
   "purchase_date": "2024-01-15",
@@ -1313,8 +1314,16 @@ These endpoints are for external integrations (e.g., e-commerce platforms) to in
 }
 ```
 
+**Required Fields:**
+- `account_number`: 16-digit account number
+- `customer_email`: Customer email (must match account)
+- `cvv`: 3-digit CVV
+- `pin`: 4-digit PIN (cannot be default 0000)
+- `amount`: Purchase amount
+- `items`: Array of purchased items
+
 **Note:** 
-- `pin` is required (4-digit PIN)
+- Both `cvv` and `pin` are required for all payments
 - Default PIN `0000` cannot be used for payments, only for changing PIN
 - Customer must have changed their PIN from default before making payments
 
@@ -1394,9 +1403,15 @@ These endpoints allow customers to view and pay invoices via unique invoice link
 ```json
 {
   "account_number": "1234567890123456",
+  "cvv": "123",
   "pin": "1234"
 }
 ```
+
+**Required Fields:**
+- `account_number`: 16-digit account number
+- `cvv`: 3-digit CVV
+- `pin`: 4-digit PIN (cannot be default 0000)
 
 **Response (200 OK):**
 ```json
@@ -1413,6 +1428,13 @@ These endpoints allow customers to view and pay invoices via unique invoice link
 ```
 
 **Error Responses:**
+
+**Invalid CVV:**
+```json
+{
+  "message": "Invalid CVV"
+}
+```
 
 **Invalid PIN:**
 ```json
@@ -1437,7 +1459,7 @@ These endpoints allow customers to view and pay invoices via unique invoice link
 
 **Note:**
 - Invoice links are **one-time use only** - once used for payment, they cannot be reused
-- Customer must provide their 16-digit `account_number` and 4-digit `pin`
+- Customer must provide their 16-digit `account_number`, 3-digit `cvv`, and 4-digit `pin`
 - Default PIN `0000` cannot be used for payments
 - The invoice must belong to the customer's account
 
@@ -1597,11 +1619,13 @@ All errors follow this format:
 1. **Account Numbers:** Customer `account_number` is auto-generated as a 16-digit number when a customer is created.
 
 2. **CVV and PIN:**
-   - `cvv`: Auto-generated 3-digit CVV for each customer
+   - `cvv`: Auto-generated 3-digit CVV for each customer (required for all payments)
    - `pin`: 4-digit PIN (default: `0000`)
    - Default PIN `0000` can **only** be used to change the PIN, **not** for payments
    - Customers must change their PIN before making any payments
-   - PIN is required for all payment transactions (third-party sites and invoice links)
+   - Both CVV and PIN are required for all payment transactions:
+     - Third-party site payments (via Pay with Nodopay API)
+     - Invoice link payments (via generated checkout links)
 
 3. **Invoice Links:**
    - Businesses can generate unique invoice links for each invoice

@@ -31,6 +31,7 @@ class PayWithNodopayController extends Controller
         $request->validate([
             'account_number' => 'required|string|size:16|exists:customers,account_number',
             'customer_email' => 'required|email',
+            'cvv' => 'required|string|size:3',
             'pin' => 'required|string|size:4',
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
@@ -65,6 +66,13 @@ class PayWithNodopayController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Customer email mismatch',
+                ], 400);
+            }
+
+            if (!$customer->verifyCvv($request->cvv)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid CVV',
                 ], 400);
             }
 

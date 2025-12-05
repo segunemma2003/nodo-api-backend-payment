@@ -112,6 +112,14 @@ class Customer extends Authenticatable
         return $this->pin === $pin;
     }
 
+    /**
+     * Verify CVV
+     */
+    public function verifyCvv(string $cvv): bool
+    {
+        return $this->cvv === $cvv;
+    }
+
     protected static function boot()
     {
         parent::boot();
