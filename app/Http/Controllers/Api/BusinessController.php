@@ -229,7 +229,7 @@ class BusinessController extends Controller
                 'invoice_id' => $invoice->invoice_id,
                 'slug' => $invoice->slug,
                 'amount' => $invoice->principal_amount,
-                'due_date' => $invoice->due_date->format('Y-m-d'),
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                 'status' => $invoice->status,
                 'payment_link' => $invoice->slug ? url("/api/invoice/checkout/{$invoice->slug}") : null,
                 'description' => $request->description,
@@ -492,12 +492,6 @@ class BusinessController extends Controller
             'contact_name' => 'nullable|string|max:255',
             'contact_phone' => 'nullable|string|max:20',
             'contact_email' => 'nullable|email|max:255',
-            'minimum_purchase_amount' => 'nullable|numeric|min:0',
-            'payment_plan_duration' => 'nullable|integer|min:1|max:36',
-            'registration_number' => 'nullable|string|max:255',
-            'tax_id' => 'nullable|string|max:255',
-            'notes' => 'nullable|string',
-            'status' => 'nullable|in:active,inactive,suspended',
         ]);
 
         // Check for duplicate business name for this business
@@ -519,12 +513,7 @@ class BusinessController extends Controller
             'contact_name' => $request->contact_name,
             'contact_phone' => $request->contact_phone,
             'contact_email' => $request->contact_email,
-            'minimum_purchase_amount' => $request->minimum_purchase_amount ?? 0,
-            'payment_plan_duration' => $request->payment_plan_duration ?? 6,
-            'registration_number' => $request->registration_number,
-            'tax_id' => $request->tax_id,
-            'notes' => $request->notes,
-            'status' => $request->status ?? 'active',
+            'status' => 'active', // Always active by default
         ]);
 
         return response()->json([
@@ -566,12 +555,6 @@ class BusinessController extends Controller
             'contact_name' => 'nullable|string|max:255',
             'contact_phone' => 'nullable|string|max:20',
             'contact_email' => 'nullable|email|max:255',
-            'minimum_purchase_amount' => 'nullable|numeric|min:0',
-            'payment_plan_duration' => 'nullable|integer|min:1|max:36',
-            'registration_number' => 'nullable|string|max:255',
-            'tax_id' => 'nullable|string|max:255',
-            'notes' => 'nullable|string',
-            'status' => 'nullable|in:active,inactive,suspended',
         ]);
 
         // Check for duplicate business name if changing
@@ -595,12 +578,6 @@ class BusinessController extends Controller
             'contact_name',
             'contact_phone',
             'contact_email',
-            'minimum_purchase_amount',
-            'payment_plan_duration',
-            'registration_number',
-            'tax_id',
-            'notes',
-            'status',
         ]));
 
         return response()->json([

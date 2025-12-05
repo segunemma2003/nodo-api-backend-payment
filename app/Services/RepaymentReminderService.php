@@ -14,13 +14,21 @@ class RepaymentReminderService
         
         $invoices = Invoice::where('status', '!=', 'paid')
             ->where(function ($query) use ($today) {
-                $query->where('due_date', '<=', $today->copy()->addDays(7))
-                    ->orWhere('status', 'overdue');
+                $query->where(function ($q) use ($today) {
+                    $q->whereNotNull('due_date')
+                      ->where('due_date', '<=', $today->copy()->addDays(7));
+                })
+                ->orWhere('status', 'overdue');
             })
             ->with('customer')
             ->get();
 
         foreach ($invoices as $invoice) {
+            // Skip invoices without due_date
+            if (!$invoice->due_date) {
+                continue;
+            }
+
             $daysUntilDue = $today->diffInDays($invoice->due_date, false);
             $isOverdue = $invoice->status === 'overdue';
             

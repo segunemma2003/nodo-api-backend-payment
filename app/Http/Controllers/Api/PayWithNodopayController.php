@@ -143,7 +143,7 @@ class PayWithNodopayController extends Controller
                 'invoice' => [
                     'invoice_id' => $invoice->invoice_id,
                     'amount' => $invoice->principal_amount,
-                    'due_date' => $invoice->due_date->format('Y-m-d'),
+                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                     'status' => $invoice->status,
                 ],
                 'order' => [

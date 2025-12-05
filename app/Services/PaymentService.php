@@ -40,7 +40,7 @@ class PaymentService
 
             $invoices = $customer->invoices()
                 ->where('status', '!=', 'paid')
-                ->orderBy('due_date', 'asc')
+                ->orderByRaw('due_date IS NULL, due_date ASC')
                 ->get();
 
             $remainingAmount = $amount;

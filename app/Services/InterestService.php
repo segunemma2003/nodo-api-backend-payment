@@ -15,12 +15,14 @@ class InterestService
      */
     public function calculateInterest(Invoice $invoice): float
     {
-        if ($invoice->status === 'paid') {
+        if ($invoice->status === 'paid' || !$invoice->due_date) {
             return 0;
         }
 
         $now = Carbon::now();
-        $gracePeriodEnd = Carbon::parse($invoice->grace_period_end_date);
+        $gracePeriodEnd = $invoice->grace_period_end_date 
+            ? Carbon::parse($invoice->grace_period_end_date)
+            : (Carbon::parse($invoice->due_date)->addDays(self::GRACE_PERIOD_DAYS));
 
         // No interest during grace period
         if ($now->lte($gracePeriodEnd)) {
@@ -44,13 +46,22 @@ class InterestService
      */
     public function updateInvoiceStatus(Invoice $invoice): void
     {
-        $now = Carbon::now();
-        $dueDate = Carbon::parse($invoice->due_date);
-        $gracePeriodEnd = Carbon::parse($invoice->grace_period_end_date);
-
         if ($invoice->status === 'paid') {
             return;
         }
+
+        // If no due_date, keep invoice as pending
+        if (!$invoice->due_date) {
+            $invoice->status = 'pending';
+            $invoice->save();
+            return;
+        }
+
+        $now = Carbon::now();
+        $dueDate = Carbon::parse($invoice->due_date);
+        $gracePeriodEnd = $invoice->grace_period_end_date 
+            ? Carbon::parse($invoice->grace_period_end_date)
+            : ($dueDate->copy()->addDays(self::GRACE_PERIOD_DAYS));
 
         if ($now->lt($dueDate)) {
             $invoice->status = 'pending';
@@ -82,4 +93,5 @@ class InterestService
         }
     }
 }
+
 

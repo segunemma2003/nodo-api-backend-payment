@@ -47,7 +47,7 @@ class InvoiceCheckoutController extends Controller
                 'remaining_balance' => $invoice->remaining_balance,
                 'status' => $invoice->status,
                 'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
-                'due_date' => $invoice->due_date->format('Y-m-d'),
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                 'supplier' => [
                     'id' => $invoice->supplier?->id,
                     'business_name' => $invoice->supplier?->business_name ?? $invoice->supplier_name,

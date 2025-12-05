@@ -341,10 +341,6 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/custome
         "contact_name": "John Doe",
         "contact_phone": "08012345678",
         "contact_email": "john@abccompany.com",
-        "minimum_purchase_amount": "50000.00",
-        "payment_plan_duration": 6,
-        "registration_number": "RC123456",
-        "tax_id": "TAX123456",
         "status": "active",
         "linked_customer_id": null,
         "linked_at": null,
@@ -377,13 +373,7 @@ Content-Type: application/json
   "address": "123 Main Street, Lagos, Nigeria",
   "contact_name": "John Doe",
   "contact_phone": "08012345678",
-  "contact_email": "john@abccompany.com",
-  "minimum_purchase_amount": 50000,
-  "payment_plan_duration": 6,
-  "registration_number": "RC123456",
-  "tax_id": "TAX123456",
-  "notes": "Regular customer, 5% discount",
-  "status": "active"
+  "contact_email": "john@abccompany.com"
 }
 ```
 
@@ -395,12 +385,10 @@ Content-Type: application/json
 - `contact_name` (string, max 255): Contact person name
 - `contact_phone` (string, max 20): Contact phone number
 - `contact_email` (email, max 255): Contact email address
-- `minimum_purchase_amount` (numeric, min: 0): Minimum purchase amount (default: 0)
-- `payment_plan_duration` (integer, min: 1, max: 36): Payment plan duration in months (default: 6)
-- `registration_number` (string, max 255): Business registration number
-- `tax_id` (string, max 255): Tax ID or VAT number
-- `notes` (string): Additional notes about the customer
-- `status` (enum: active, inactive, suspended): Customer status (default: active)
+
+**Note:** 
+- Business customers are automatically set to `status = 'active'`
+- Fields like `minimum_purchase_amount`, `payment_plan_duration`, `registration_number`, `tax_id`, `notes`, and `status` are only used during main customer registration (not for business customers)
 
 **Response (201 Created):**
 ```json
@@ -415,11 +403,6 @@ Content-Type: application/json
     "contact_name": "John Doe",
     "contact_phone": "08012345678",
     "contact_email": "john@abccompany.com",
-    "minimum_purchase_amount": "50000.00",
-    "payment_plan_duration": 6,
-    "registration_number": "RC123456",
-    "tax_id": "TAX123456",
-    "notes": "Regular customer, 5% discount",
     "status": "active",
     "linked_customer_id": null,
     "linked_at": null,
@@ -465,10 +448,6 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/custome
     "contact_name": "John Doe",
     "contact_phone": "08012345678",
     "contact_email": "john@abccompany.com",
-    "minimum_purchase_amount": "50000.00",
-    "payment_plan_duration": 6,
-    "registration_number": "RC123456",
-    "tax_id": "TAX123456",
     "status": "active",
     "linked_customer_id": 5,
     "linked_at": "2024-01-20T14:30:00.000000Z",
@@ -501,10 +480,14 @@ Content-Type: application/json
 ```json
 {
   "business_name": "Updated Company Name",
+  "address": "Updated Address",
+  "contact_name": "Updated Contact",
   "contact_phone": "08098765432",
-  "status": "active"
+  "contact_email": "updated@example.com"
 }
 ```
+
+**Note:** Only basic contact fields can be updated. Fields like `minimum_purchase_amount`, `payment_plan_duration`, `registration_number`, `tax_id`, `notes`, and `status` are not available for business customers.
 
 **Response (200 OK):**
 ```json

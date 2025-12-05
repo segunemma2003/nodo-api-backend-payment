@@ -148,7 +148,8 @@ class Invoice extends Model
             if (empty($invoice->invoice_id)) {
                 $invoice->invoice_id = 'NODO-' . strtoupper(uniqid());
             }
-            if (empty($invoice->grace_period_end_date)) {
+            // Only set grace_period_end_date if due_date is provided
+            if (empty($invoice->grace_period_end_date) && $invoice->due_date) {
                 $invoice->grace_period_end_date = Carbon::parse($invoice->due_date)->addDays(30);
             }
             $invoice->remaining_balance = $invoice->total_amount;

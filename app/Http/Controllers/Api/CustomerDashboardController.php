@@ -57,7 +57,7 @@ class CustomerDashboardController extends Controller
                 return [
                     'invoice_id' => $invoice->invoice_id,
                     'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
-                    'due_date' => $invoice->due_date->format('Y-m-d'),
+                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                     'status' => $invoice->status,
                     'principal_amount' => $invoice->principal_amount,
                     'interest_amount' => $invoice->interest_amount,
@@ -96,8 +96,8 @@ class CustomerDashboardController extends Controller
             'invoice' => [
                 'invoice_id' => $invoice->invoice_id,
                 'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
-                'due_date' => $invoice->due_date->format('Y-m-d'),
-                'grace_period_end_date' => $invoice->grace_period_end_date->format('Y-m-d'),
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                'grace_period_end_date' => $invoice->grace_period_end_date ? $invoice->grace_period_end_date->format('Y-m-d') : null,
                 'status' => $invoice->status,
                 'principal_amount' => $invoice->principal_amount,
                 'interest_amount' => $invoice->interest_amount,

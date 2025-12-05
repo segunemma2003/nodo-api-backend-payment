@@ -33,7 +33,7 @@ class InvoiceService
 
         try {
             $purchaseDate = $purchaseDate ?? Carbon::now();
-            $dueDate = $dueDate ?? $purchaseDate->copy()->addMonths($customer->payment_plan_duration);
+            // due_date is optional - leave as null if not provided
 
             $invoice = Invoice::create([
                 'customer_id' => $customer->id,
@@ -86,9 +86,7 @@ class InvoiceService
         try {
             $purchaseDate = $purchaseDate ?? Carbon::now();
             
-            // Use business customer's payment plan duration, or default to 6 months
-            $duration = $businessCustomer->payment_plan_duration ?? 6;
-            $dueDate = $dueDate ?? $purchaseDate->copy()->addMonths($duration);
+            // due_date is optional - leave as null if not provided
 
             // Generate slug for payment link
             $slug = Invoice::generateSlug();
