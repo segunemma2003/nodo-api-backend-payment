@@ -83,6 +83,14 @@ class PayWithNodopayController extends Controller
                 ], 400);
             }
 
+            // Check approval status - customer must be approved by admin
+            if ($customer->approval_status !== 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer account is pending approval. Please wait for admin approval before making payments.',
+                ], 400);
+            }
+
             if ($customer->status !== 'active') {
                 return response()->json([
                     'success' => false,

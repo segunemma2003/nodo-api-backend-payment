@@ -152,6 +152,7 @@ class CustomerDashboardController extends Controller
             'customer' => [
                 'id' => $customer->id,
                 'account_number' => $customer->account_number,
+                'cvv' => $customer->cvv,
                 'business_name' => $customer->business_name,
                 'email' => $customer->email,
                 'username' => $customer->username,

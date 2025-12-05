@@ -80,6 +80,19 @@ class InvoiceCheckoutController extends Controller
 
         $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
 
+        // Check approval status - customer must be approved by admin
+        if ($customer->approval_status !== 'approved') {
+            return response()->json([
+                'message' => 'Your account is pending approval. Please wait for admin approval before making payments.',
+            ], 400);
+        }
+
+        if ($customer->status !== 'active') {
+            return response()->json([
+                'message' => 'Your account is not active',
+            ], 400);
+        }
+
         if (!$customer->verifyCvv($request->cvv)) {
             return response()->json([
                 'message' => 'Invalid CVV',
