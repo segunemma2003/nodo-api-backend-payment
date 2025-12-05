@@ -24,18 +24,23 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Prevent redirects on API routes - return JSON errors instead
-        $exceptions->respond(function (\Illuminate\Http\Request $request, \Throwable $exception) {
+        // Ensure API routes return JSON errors instead of redirects
+        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
+                $statusCode = method_exists($e, 'getStatusCode') 
+                    ? $e->getStatusCode() 
+                    : ($e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 500);
+                
                 return response()->json([
                     'success' => false,
-                    'message' => $exception->getMessage() ?: 'An error occurred',
+                    'message' => $e->getMessage() ?: 'An error occurred',
                     'error' => config('app.debug') ? [
-                        'type' => get_class($exception),
-                        'file' => $exception->getFile(),
-                        'line' => $exception->getLine(),
+                        'type' => get_class($e),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
                     ] : null,
-                ], method_exists($exception, 'getStatusCode') ? $exception->getStatusCode() : 500);
+                ], $statusCode);
             }
         });
     })->create();
