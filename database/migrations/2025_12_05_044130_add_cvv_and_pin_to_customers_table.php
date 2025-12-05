@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('customers', function (Blueprint $table) {
-            $table->string('cvv', 3)->nullable()->after('account_number');
-            $table->string('pin', 4)->default('0000')->after('cvv');
+            if (!Schema::hasColumn('customers', 'cvv')) {
+                $table->string('cvv', 3)->nullable()->after('account_number');
+            }
+            if (!Schema::hasColumn('customers', 'pin')) {
+                $table->string('pin', 4)->default('0000')->after('cvv');
+            }
         });
     }
 

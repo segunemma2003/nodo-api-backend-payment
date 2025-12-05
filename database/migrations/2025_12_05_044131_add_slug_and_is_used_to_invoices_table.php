@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->string('slug')->unique()->nullable()->after('invoice_id');
-            $table->boolean('is_used')->default(false)->after('slug');
+            if (!Schema::hasColumn('invoices', 'slug')) {
+                $table->string('slug')->unique()->nullable()->after('invoice_id');
+            }
+            if (!Schema::hasColumn('invoices', 'is_used')) {
+                $table->boolean('is_used')->default(false)->after('slug');
+            }
         });
     }
 
