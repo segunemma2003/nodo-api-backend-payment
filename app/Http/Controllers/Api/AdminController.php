@@ -397,7 +397,16 @@ class AdminController extends Controller
             $business->save();
         }
 
-        $business->notify(new BusinessCreatedNotification($request->password));
+        // Send notification (non-blocking - wrapped in try-catch to prevent failures)
+        try {
+            $business->notify(new BusinessCreatedNotification($request->password));
+        } catch (\Exception $e) {
+            // Log the error but don't fail the request
+            \Log::warning('Failed to send business creation notification: ' . $e->getMessage(), [
+                'business_id' => $business->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Business created successfully',

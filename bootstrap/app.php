@@ -24,16 +24,55 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Ensure API routes return JSON errors instead of redirects
+        // Handle validation exceptions for API routes
+        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The given data was invalid.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+        });
+
+        // Handle all other exceptions for API routes
         $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
+                // Don't expose sensitive errors in production
+                $message = $e->getMessage() ?: 'An error occurred';
+                
+                // For 404 errors
+                if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Resource not found',
+                    ], 404);
+                }
+
+                // For authentication/authorization errors
+                if ($e instanceof \Illuminate\Auth\AuthenticationException || 
+                    $e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                    ], 401);
+                }
+
+                // For model not found
+                if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Resource not found',
+                    ], 404);
+                }
+
                 $statusCode = method_exists($e, 'getStatusCode') 
                     ? $e->getStatusCode() 
                     : ($e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 500);
                 
                 return response()->json([
                     'success' => false,
-                    'message' => $e->getMessage() ?: 'An error occurred',
+                    'message' => $message,
                     'error' => config('app.debug') ? [
                         'type' => get_class($e),
                         'file' => $e->getFile(),
