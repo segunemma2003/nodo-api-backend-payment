@@ -46,10 +46,8 @@ class BusinessController extends Controller
         // Ensure business has an API token
         if (empty($business->api_token)) {
             $business->generateApiToken();
+            $business->refresh();
         }
-
-        // Generate session token (for potential future session management)
-        $token = bin2hex(random_bytes(32));
 
         return response()->json([
             'business' => [
@@ -57,8 +55,10 @@ class BusinessController extends Controller
                 'business_name' => $business->business_name,
                 'email' => $business->email,
                 'api_token' => $business->api_token,
+                'status' => $business->status,
+                'approval_status' => $business->approval_status,
             ],
-            'token' => $token,
+            'message' => 'Use the api_token field for API authentication (Bearer token or X-API-Token header)',
         ]);
     }
 
@@ -148,7 +148,7 @@ class BusinessController extends Controller
         }
 
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'customer_account_number' => 'required|string|size:16|exists:customers,account_number',
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
             'due_date' => 'nullable|date',
@@ -160,7 +160,7 @@ class BusinessController extends Controller
             'items.*.description' => 'nullable|string',
         ]);
 
-        $customer = Customer::findOrFail($request->customer_id);
+        $customer = Customer::where('account_number', $request->customer_account_number)->firstOrFail();
 
         if (!$this->invoiceService->hasAvailableCredit($customer, $request->amount)) {
             return response()->json([
@@ -203,6 +203,10 @@ class BusinessController extends Controller
                 'due_date' => $invoice->due_date->format('Y-m-d'),
                 'status' => $invoice->status,
             ],
+            'customer' => [
+                'account_number' => $customer->account_number,
+                'business_name' => $customer->business_name,
+            ],
             'transaction' => [
                 'transaction_reference' => $transaction->transaction_reference,
                 'status' => $transaction->status,
@@ -215,11 +219,11 @@ class BusinessController extends Controller
         $business = $this->getBusiness($request);
 
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'customer_account_number' => 'required|string|size:16|exists:customers,account_number',
             'amount' => 'required|numeric|min:0.01',
         ]);
 
-        $customer = Customer::findOrFail($request->customer_id);
+        $customer = Customer::where('account_number', $request->customer_account_number)->firstOrFail();
         $customer->updateBalances();
 
         $hasCredit = $this->invoiceService->hasAvailableCredit($customer, $request->amount);
@@ -227,6 +231,10 @@ class BusinessController extends Controller
         return response()->json([
             'success' => true,
             'has_credit' => $hasCredit,
+            'customer' => [
+                'account_number' => $customer->account_number,
+                'business_name' => $customer->business_name,
+            ],
             'available_credit' => $customer->available_balance,
             'current_balance' => $customer->current_balance,
             'credit_limit' => $customer->credit_limit,

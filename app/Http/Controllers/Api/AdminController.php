@@ -76,6 +76,11 @@ class AdminController extends Controller
 
         $customer->notify(new CustomerCreatedNotification($request->password));
 
+        // Clear customer list caches since we added a new customer
+        for ($page = 1; $page <= 20; $page++) {
+            Cache::forget('admin_customers_page_' . $page);
+        }
+
         return response()->json([
             'message' => 'Customer created successfully',
             'customer' => [
@@ -145,6 +150,12 @@ class AdminController extends Controller
         $customer = Customer::findOrFail($id);
         $customer->status = $request->status;
         $customer->save();
+
+        // Clear caches
+        Cache::forget('admin_customer_' . $id);
+        for ($page = 1; $page <= 20; $page++) {
+            Cache::forget('admin_customers_page_' . $page);
+        }
 
         return response()->json([
             'message' => 'Customer status updated successfully',
@@ -219,7 +230,10 @@ class AdminController extends Controller
 
         $customer->save();
         Cache::forget('admin_customer_' . $id);
-        Cache::forget('admin_customers_page_*');
+        // Clear all customer list page caches (clear first 20 pages as reasonable limit)
+        for ($page = 1; $page <= 20; $page++) {
+            Cache::forget('admin_customers_page_' . $page);
+        }
 
         return response()->json([
             'message' => 'Customer updated successfully',

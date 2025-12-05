@@ -1,0 +1,579 @@
+# Customer Panel API - Complete Documentation
+
+## Base URL
+```
+https://nodopay-api-0fbd4546e629.herokuapp.com/api
+```
+
+---
+
+## 🔐 Authentication
+
+### Step 1: Login to Get Customer Information
+
+**Endpoint:** `POST /api/auth/customer/login`
+
+**Request:**
+```bash
+curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "customer@example.com",
+    "password": "your-password"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "customer": {
+    "id": 1,
+    "account_number": "1234567890123456",
+    "business_name": "ABC Company",
+    "email": "customer@example.com",
+    "credit_limit": "100000.00",
+    "available_balance": "75000.00"
+  },
+  "token": "session_token_here"
+}
+```
+
+**⚠️ IMPORTANT:** 
+- The `token` returned is for session management
+- All customer endpoints require `customer_id` as a query parameter
+- Customer must have `status = 'active'` to access endpoints
+
+### Step 2: Use Customer ID in API Requests
+
+All customer endpoints require the `customer_id` as a query parameter:
+
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/credit-overview?customer_id=1"
+```
+
+---
+
+## 📋 All Customer API Endpoints
+
+All endpoints require `customer_id` as a query parameter.
+
+### 1. Get Credit Overview
+**GET** `/api/customer/credit-overview`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/credit-overview?customer_id=1"
+```
+
+**Response (200 OK):**
+```json
+{
+  "credit_limit": "100000.00",
+  "current_balance": "25000.00",
+  "available_balance": "75000.00"
+}
+```
+
+---
+
+### 2. Get All Invoices
+**GET** `/api/customer/invoices`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+- `status` (optional): Filter by status (pending, in_grace, overdue, paid)
+- `page` (optional): Page number for pagination
+- `per_page` (optional): Items per page (default: 20)
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/invoices?customer_id=1&status=in_grace"
+```
+
+**Response (200 OK):**
+```json
+{
+  "invoices": [
+    {
+      "invoice_id": "INV-2024-001",
+      "purchase_date": "2024-01-15",
+      "due_date": "2024-02-15",
+      "status": "in_grace",
+      "principal_amount": "50000.00",
+      "interest_amount": "0.00",
+      "total_amount": "50000.00",
+      "paid_amount": "0.00",
+      "remaining_balance": "50000.00",
+      "supplier_name": "Foodstuff Store",
+      "months_overdue": 0
+    }
+  ]
+}
+```
+
+**Invoice Statuses:**
+- `pending`: Awaiting approval
+- `in_grace`: Within 30-day grace period (no interest)
+- `overdue`: Past grace period (interest accruing)
+- `paid`: Fully paid
+
+---
+
+### 3. Get Invoice Details
+**GET** `/api/customer/invoices/{invoiceId}`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**URL Parameters:**
+- `invoiceId`: Invoice ID (e.g., "INV-2024-001")
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/invoices/INV-2024-001?customer_id=1"
+```
+
+**Response (200 OK):**
+```json
+{
+  "invoice": {
+    "invoice_id": "INV-2024-001",
+    "purchase_date": "2024-01-15",
+    "due_date": "2024-02-15",
+    "grace_period_end_date": "2024-03-16",
+    "status": "in_grace",
+    "principal_amount": "50000.00",
+    "interest_amount": "0.00",
+    "total_amount": "50000.00",
+    "paid_amount": "0.00",
+    "remaining_balance": "50000.00",
+    "supplier_name": "Foodstuff Store",
+    "months_overdue": 0
+  }
+}
+```
+
+---
+
+### 4. Get All Transactions
+**GET** `/api/customer/transactions`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+- `type` (optional): Filter by type (purchase, repayment, payout)
+- `status` (optional): Filter by status (pending, completed, failed)
+- `page` (optional): Page number
+- `per_page` (optional): Items per page (default: 20)
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transactions?customer_id=1&type=purchase"
+```
+
+**Response (200 OK):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "transaction_reference": "TXN-2024-001",
+      "customer_id": 1,
+      "business_id": 1,
+      "invoice_id": 1,
+      "type": "purchase",
+      "amount": "50000.00",
+      "status": "completed",
+      "description": "Purchase from Foodstuff Store",
+      "metadata": {
+        "items": [
+          {
+            "name": "Rice 50kg",
+            "quantity": 10,
+            "price": "5000.00",
+            "description": "Premium rice"
+          }
+        ]
+      },
+      "business": {
+        "id": 1,
+        "business_name": "Foodstuff Store"
+      },
+      "invoice": {
+        "id": 1,
+        "invoice_id": "INV-2024-001"
+      },
+      "created_at": "2024-01-15T10:00:00.000000Z"
+    }
+  ],
+  "current_page": 1,
+  "per_page": 20,
+  "total": 1
+}
+```
+
+---
+
+### 5. Get Repayment Account
+**GET** `/api/customer/repayment-account`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?customer_id=1"
+```
+
+**Response (200 OK):**
+```json
+{
+  "virtual_account_number": "1234567890",
+  "virtual_account_bank": "Sterling Bank"
+}
+```
+
+**Note:** Use this virtual account to make repayments. Transfer funds to this account and payments will be automatically recorded.
+
+---
+
+### 6. Get Profile
+**GET** `/api/customer/profile`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/profile?customer_id=1"
+```
+
+**Response (200 OK):**
+```json
+{
+  "customer": {
+    "id": 1,
+    "account_number": "1234567890123456",
+    "business_name": "ABC Company",
+    "email": "customer@example.com",
+    "username": "customer123",
+    "phone": "08012345678",
+    "address": "Lagos, Nigeria",
+    "credit_limit": "100000.00",
+    "current_balance": "25000.00",
+    "available_balance": "75000.00",
+    "virtual_account_number": "1234567890",
+    "virtual_account_bank": "Sterling Bank",
+    "kyc_documents": ["kyc_documents/customer_1/doc1.pdf"],
+    "status": "active"
+  }
+}
+```
+
+---
+
+### 7. Update Profile
+**PUT** `/api/customer/profile`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request Body (all fields optional, only include fields to update):**
+```json
+{
+  "business_name": "Updated Company Name",
+  "email": "newemail@example.com",
+  "username": "newusername",
+  "password": "NewPassword123!",
+  "phone": "08098765432",
+  "address": "New Address",
+  "kyc_documents": []
+}
+```
+
+**Request:**
+```bash
+curl -X PUT "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/profile?customer_id=1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "business_name": "Updated Company Name",
+    "phone": "08098765432"
+  }'
+```
+
+**Note:** For `kyc_documents`, send as `multipart/form-data` with file uploads. New KYC documents will be added to existing ones.
+
+**Response (200 OK):**
+```json
+{
+  "message": "Profile updated successfully",
+  "customer": {
+    "id": 1,
+    "account_number": "1234567890123456",
+    "business_name": "Updated Company Name",
+    "email": "customer@example.com",
+    "username": "customer123",
+    "phone": "08098765432",
+    "address": "New Address",
+    "kyc_documents": ["kyc_documents/customer_1/doc1.pdf", "kyc_documents/customer_1/doc2.pdf"]
+  }
+}
+```
+
+---
+
+### 8. Change PIN ⭐
+**POST** `/api/customer/change-pin`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request Body:**
+```json
+{
+  "current_pin": "0000",
+  "new_pin": "1234"
+}
+```
+
+**Request:**
+```bash
+curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/change-pin?customer_id=1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_pin": "0000",
+    "new_pin": "1234"
+  }'
+```
+
+**Required Fields:**
+- `current_pin`: Current 4-digit PIN (required)
+- `new_pin`: New 4-digit PIN (required, must be 4 digits, numbers only)
+
+**PIN Requirements:**
+- PIN must be exactly 4 digits (0-9 only)
+- Default PIN is `0000` and can only be used to change the PIN (not for payments)
+- New PIN cannot be `0000`
+- After changing PIN, the new PIN must be used for all payment transactions
+
+**Response (200 OK):**
+```json
+{
+  "message": "PIN changed successfully"
+}
+```
+
+**Error Responses:**
+
+**Invalid Current PIN (400 Bad Request):**
+```json
+{
+  "message": "Invalid current PIN"
+}
+```
+
+**New PIN Cannot Be Default (400 Bad Request):**
+```json
+{
+  "message": "New PIN cannot be the default PIN (0000)"
+}
+```
+
+**Invalid PIN Format (422 Validation Error):**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "new_pin": [
+      "The new pin must be 4 characters.",
+      "The new pin format is invalid."
+    ]
+  }
+}
+```
+
+**⚠️ Important PIN Notes:**
+1. **Default PIN (`0000`):**
+   - Can only be used to change the PIN
+   - Cannot be used for payment transactions
+   - Must be changed before making any payments
+
+2. **New PIN Requirements:**
+   - Must be exactly 4 digits
+   - Cannot be `0000`
+   - Must contain only numbers (0-9)
+   - Case sensitive
+
+3. **PIN Usage:**
+   - Required for all payment transactions (via payment gateway)
+   - Required for invoice link payments
+   - Not required for viewing dashboard or profile
+
+4. **PIN Security:**
+   - Keep your PIN secure and confidential
+   - Do not share your PIN with anyone
+   - Change your PIN regularly for security
+
+---
+
+## 🔍 Complete Example Flow
+
+### Step 1: Login
+```bash
+curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "customer@example.com",
+    "password": "password123"
+  }'
+
+# Response includes customer.id - use this as customer_id
+```
+
+### Step 2: Change PIN (First Time)
+```bash
+# Using default PIN 0000 to set new PIN
+curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/change-pin?customer_id=1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_pin": "0000",
+    "new_pin": "1234"
+  }'
+```
+
+### Step 3: Get Credit Overview
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/credit-overview?customer_id=1"
+```
+
+### Step 4: Get Invoices
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/invoices?customer_id=1"
+```
+
+### Step 5: Get Profile
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/profile?customer_id=1"
+```
+
+---
+
+## 📝 PIN Management Best Practices
+
+### First Time Setup
+1. Login with your email and password
+2. Use default PIN `0000` to change to your secure PIN
+3. Choose a PIN you can remember but others cannot guess
+4. **Never use `0000` as your permanent PIN**
+
+### Changing PIN Later
+1. Use your current PIN as `current_pin`
+2. Provide your new 4-digit PIN as `new_pin`
+3. Remember: New PIN cannot be `0000`
+
+### PIN for Payments
+- Your PIN is required for:
+  - Payment gateway transactions (`/api/pay-with-nodopay/purchase`)
+  - Invoice link payments (`/api/invoice/checkout/{slug}/pay`)
+- Your PIN is NOT required for:
+  - Viewing dashboard
+  - Viewing invoices
+  - Viewing transactions
+  - Updating profile (except changing PIN)
+
+---
+
+## 🚨 Error Handling
+
+### Common Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "message": "Unauthenticated"
+}
+```
+**Solution:** Include `customer_id` as a query parameter
+
+**404 Not Found:**
+```json
+{
+  "message": "Resource not found"
+}
+```
+**Solution:** Check that the customer_id or invoice_id exists
+
+**400 Bad Request (PIN Related):**
+```json
+{
+  "message": "Invalid current PIN"
+}
+```
+**Solution:** Verify you're using the correct current PIN
+
+**422 Validation Error:**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "new_pin": ["The new pin must be 4 characters."]
+  }
+}
+```
+**Solution:** Ensure PIN is exactly 4 digits (0-9)
+
+---
+
+## ⚠️ Important Notes
+
+1. **Account Number:** Each customer has a unique 16-digit account number
+2. **PIN Security:** 
+   - Default PIN is `0000` (change it immediately)
+   - PIN must be 4 digits (numbers only)
+   - PIN cannot be `0000` once changed
+3. **Status:** Customer account must be `'active'` to access endpoints
+4. **Authentication:** All endpoints require `customer_id` as query parameter
+5. **Caching:** Some endpoints use caching (credit overview: 60s, invoices: 120s)
+6. **Interest:** 3.5% monthly interest applies after 30-day grace period
+7. **Virtual Account:** Use the virtual account number for repayments
+
+---
+
+## 📊 Data Fields Reference
+
+### Customer Object
+- `id`: Internal customer ID
+- `account_number`: 16-digit account number (unique identifier)
+- `business_name`: Customer business name
+- `email`: Email address
+- `username`: Username
+- `phone`: Phone number
+- `address`: Physical address
+- `credit_limit`: Total credit limit
+- `current_balance`: Current outstanding balance
+- `available_balance`: Available credit (credit_limit - current_balance)
+- `virtual_account_number`: Account number for repayments
+- `virtual_account_bank`: Bank name for repayments
+- `status`: Account status (active, suspended, inactive)
+- `kyc_documents`: Array of KYC document paths
+
+### Invoice Object
+- `invoice_id`: Invoice identifier (e.g., "INV-2024-001")
+- `purchase_date`: Date of purchase
+- `due_date`: Payment due date
+- `grace_period_end_date`: End of 30-day grace period
+- `status`: Invoice status (pending, in_grace, overdue, paid)
+- `principal_amount`: Original invoice amount
+- `interest_amount`: Accrued interest (if overdue)
+- `total_amount`: Total amount owed (principal + interest)
+- `paid_amount`: Amount already paid
+- `remaining_balance`: Amount still owed
+- `supplier_name`: Name of the supplier/business
+- `months_overdue`: Number of months past grace period
+
+---
+
+**Base URL:** `https://nodopay-api-0fbd4546e629.herokuapp.com/api`
+

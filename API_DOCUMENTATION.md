@@ -446,15 +446,28 @@ X-API-Token: your_business_api_token_here
 }
 ```
 
+**Required Fields:**
+- `customer_account_number`: 16-digit customer account number
+- `amount`: Invoice amount (numeric, min: 0.01)
+
 **Response (201 Created):**
 ```json
 {
-  "message": "Invoice submitted successfully",
+  "success": true,
+  "message": "Invoice submitted and financed successfully",
   "invoice": {
-    "id": 1,
     "invoice_id": "INV-2024-001",
-    "status": "pending",
-    "amount": "50000.00"
+    "amount": "50000.00",
+    "due_date": "2024-02-15",
+    "status": "pending"
+  },
+  "customer": {
+    "account_number": "1234567890123456",
+    "business_name": "ABC Company"
+  },
+  "transaction": {
+    "transaction_reference": "TXN-2024-001",
+    "status": "completed"
   }
 }
 ```
@@ -468,22 +481,27 @@ X-API-Token: your_business_api_token_here
 **Request Body:**
 ```json
 {
-  "account_number": "1234567890123456",
+  "customer_account_number": "1234567890123456",
   "amount": "50000.00"
 }
 ```
 
+**Required Fields:**
+- `customer_account_number`: 16-digit customer account number
+- `amount`: Amount to check (numeric, min: 0.01)
+
 **Response (200 OK):**
 ```json
 {
-  "has_sufficient_credit": true,
-  "available_balance": "75000.00",
-  "requested_amount": "50000.00",
+  "success": true,
+  "has_credit": true,
   "customer": {
-    "id": 1,
     "account_number": "1234567890123456",
     "business_name": "ABC Company"
-  }
+  },
+  "available_credit": "75000.00",
+  "current_balance": "25000.00",
+  "credit_limit": "100000.00"
 }
 ```
 
