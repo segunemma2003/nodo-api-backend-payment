@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'api.token' => \App\Http\Middleware\ApiTokenAuth::class,
+            'business.auth' => \App\Http\Middleware\BusinessAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

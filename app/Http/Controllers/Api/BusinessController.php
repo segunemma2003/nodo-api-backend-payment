@@ -43,6 +43,12 @@ class BusinessController extends Controller
             ]);
         }
 
+        // Ensure business has an API token
+        if (empty($business->api_token)) {
+            $business->generateApiToken();
+        }
+
+        // Generate session token (for potential future session management)
         $token = bin2hex(random_bytes(32));
 
         return response()->json([
@@ -402,13 +408,14 @@ class BusinessController extends Controller
 
     protected function getBusiness(Request $request): Business
     {
-        $businessId = $request->input('business_id') ?? $request->user()?->id;
+        // Get business from request (set by BusinessAuth middleware)
+        $business = $request->get('business') ?? $request->user();
         
-        if (!$businessId) {
+        if (!$business instanceof Business) {
             abort(401, 'Unauthenticated');
         }
 
-        return Business::findOrFail($businessId);
+        return $business;
     }
 }
 

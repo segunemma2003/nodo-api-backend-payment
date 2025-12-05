@@ -2,16 +2,17 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\ApiToken;
 use App\Models\Business;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class ApiTokenAuth
+class BusinessAuth
 {
     /**
      * Handle an incoming request.
+     * 
+     * Validates Bearer token from Authorization header or api_token from request
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -31,39 +32,29 @@ class ApiTokenAuth
         if (!$token) {
             return response()->json([
                 'success' => false,
-                'message' => 'API token is required. Please provide Bearer token in Authorization header or X-API-Token header.',
+                'message' => 'Authentication token is required. Please provide Bearer token in Authorization header or X-API-Token header.',
             ], 401);
         }
 
-        // Check Business API token first
+        // Check Business API token
         $business = Business::where('api_token', $token)
             ->where('status', 'active')
             ->first();
 
-        if ($business) {
-            $request->merge(['api_token_model' => $business, 'business' => $business]);
-            return $next($request);
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or inactive authentication token',
+            ], 401);
         }
 
-        // Check ApiToken model
-        $apiToken = ApiToken::where('token', $token)
-            ->where('status', 'active')
-            ->first();
+        // Attach business to request
+        $request->merge(['business' => $business]);
+        $request->setUserResolver(function () use ($business) {
+            return $business;
+        });
 
-        if ($apiToken) {
-            // Update last used timestamp
-            $apiToken->last_used_at = now();
-            $apiToken->save();
-
-            // Attach API token to request for use in controllers
-            $request->merge(['api_token_model' => $apiToken]);
-            return $next($request);
-        }
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Invalid or inactive API token',
-        ], 401);
+        return $next($request);
     }
 }
 

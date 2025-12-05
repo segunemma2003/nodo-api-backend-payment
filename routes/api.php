@@ -42,7 +42,7 @@ Route::prefix('customer')->group(function () {
 });
 
 // Business Dashboard Routes
-Route::prefix('business')->group(function () {
+Route::prefix('business')->middleware('business.auth')->group(function () {
     Route::get('/dashboard', [BusinessController::class, 'getDashboard']);
     Route::get('/invoices', [BusinessController::class, 'getInvoices']);
     Route::get('/profile', [BusinessController::class, 'getProfile']);
