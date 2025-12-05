@@ -135,5 +135,85 @@ class PaymentService
 
         return $payout;
     }
+
+    /**
+     * Process payment for a specific invoice (used for invoice checkout payments)
+     */
+    public function processInvoicePayment(Customer $customer, Invoice $invoice, float $amount): Payment
+    {
+        DB::beginTransaction();
+
+        try {
+            $payment = Payment::create([
+                'customer_id' => $customer->id,
+                'invoice_id' => $invoice->id,
+                'amount' => $amount,
+                'payment_type' => 'repayment',
+                'status' => 'completed',
+                'paid_at' => now(),
+            ]);
+
+            // Apply payment to the specific invoice
+            $invoice->paid_amount += $amount;
+            $invoice->remaining_balance -= $amount;
+
+            if ($invoice->remaining_balance <= 0) {
+                $invoice->status = 'paid';
+                $invoice->remaining_balance = 0;
+            } else {
+                // If invoice was pending, change status to 'in_grace' so it affects balance
+                if ($invoice->status === 'pending') {
+                    $invoice->status = 'in_grace';
+                }
+            }
+
+            $invoice->save();
+
+            // Update customer balances (deduct payment from balance)
+            $customer->updateBalances();
+
+            // Create transaction record
+            Transaction::create([
+                'customer_id' => $customer->id,
+                'invoice_id' => $invoice->id,
+                'type' => 'repayment',
+                'amount' => $amount,
+                'status' => 'completed',
+                'description' => "Payment for invoice {$invoice->invoice_id}",
+                'processed_at' => now(),
+            ]);
+
+            // Process payout to business if invoice is fully paid and payout hasn't been processed yet
+            if ($invoice->status === 'paid' && $invoice->supplier_id && !$invoice->payouts()->exists()) {
+                $this->processPayout($invoice);
+            }
+
+            // Send notifications
+            if ($invoice->supplier) {
+                $customer->notify(new PaymentSuccessNotification($invoice, $amount, 'repayment'));
+                $this->webhookService->sendPaymentUpdate($invoice->supplier, [
+                    'payment_reference' => $payment->payment_reference,
+                    'invoice_id' => $invoice->invoice_id,
+                    'amount' => $amount,
+                    'customer_id' => $customer->id,
+                    'account_number' => $customer->account_number,
+                    'status' => 'completed',
+                ]);
+            }
+
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+            Cache::forget('admin_customer_' . $customer->id);
+            Cache::forget('admin_dashboard_stats');
+
+            DB::commit();
+
+            return $payment;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Invoice payment processing failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
 }
 

@@ -105,7 +105,8 @@ class InvoiceCheckoutController extends Controller
 
         $paymentAmount = $invoice->remaining_balance;
 
-        $this->paymentService->processRepayment($customer, $invoice, $paymentAmount);
+        // Process payment for this specific invoice
+        $this->paymentService->processInvoicePayment($customer, $invoice, $paymentAmount);
 
         $invoice->refresh();
         $invoice->is_used = true;

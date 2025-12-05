@@ -48,8 +48,9 @@ class InvoiceService
                 'status' => 'pending',
             ]);
 
-            $customer->updateBalances();
-            $this->paymentService->processPayout($invoice);
+            // Do NOT update customer balances or process payout when invoice is created
+            // Balance will only be deducted when customer actually pays via checkout
+            // Payout will be processed when payment is made
 
             DB::commit();
 

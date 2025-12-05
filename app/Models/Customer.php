@@ -65,8 +65,11 @@ class Customer extends Authenticatable
 
     public function updateBalances(): void
     {
+        // Only count invoices that are not 'paid' and not 'pending'
+        // 'pending' invoices don't affect balance until payment is made
         $this->current_balance = $this->invoices()
             ->where('status', '!=', 'paid')
+            ->where('status', '!=', 'pending')
             ->sum('remaining_balance');
         
         $this->available_balance = max(0, $this->credit_limit - $this->current_balance);

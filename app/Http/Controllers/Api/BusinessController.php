@@ -148,7 +148,16 @@ class BusinessController extends Controller
         }
 
         $request->validate([
-            'customer_account_number' => 'required|string|size:16|exists:customers,account_number',
+            'customer_account_number' => [
+                'required',
+                'string',
+                'size:16',
+                function ($attribute, $value, $fail) {
+                    if (!Customer::where('account_number', $value)->exists()) {
+                        $fail('The selected customer account number does not exist.');
+                    }
+                },
+            ],
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
             'due_date' => 'nullable|date',
