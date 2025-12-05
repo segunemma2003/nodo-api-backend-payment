@@ -291,8 +291,78 @@ Authorization: Bearer YOUR_API_TOKEN
 
 ---
 
-### 6. Submit Invoice for Financing
-**POST** `/api/business/submit-invoice`
+## 👥 Business Customer Management
+
+Business customers are customer records that businesses create and manage. These are separate from main customers (who have login accounts). Business customers allow you to:
+
+- Create customer records for your clients
+- Generate invoices for your business customers
+- Track invoices by customer
+- Link business customers to main customers when they pay invoices
+
+**Important Notes:**
+- Business customers don't have login credentials (no account_number, CVV, PIN)
+- Business customers are only visible to your business
+- When a business customer pays an invoice, they are automatically linked to a main customer account
+- You can manage your own customer database separately from the main system
+
+---
+
+### 6. Get All Business Customers
+**GET** `/api/business/customers`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**Query Parameters:**
+- `status` (optional): Filter by status (active, inactive, suspended)
+- `search` (optional): Search by business_name, contact_name, contact_phone, or contact_email
+- `page` (optional): Page number for pagination
+- `per_page` (optional): Items per page (default: 20)
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/customers?status=active" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "customers": {
+    "data": [
+      {
+        "id": 1,
+        "business_name": "ABC Company",
+        "address": "123 Main Street, Lagos",
+        "contact_name": "John Doe",
+        "contact_phone": "08012345678",
+        "contact_email": "john@abccompany.com",
+        "minimum_purchase_amount": "50000.00",
+        "payment_plan_duration": 6,
+        "registration_number": "RC123456",
+        "tax_id": "TAX123456",
+        "status": "active",
+        "linked_customer_id": null,
+        "linked_at": null,
+        "created_at": "2024-01-15T10:00:00.000000Z",
+        "updated_at": "2024-01-15T10:00:00.000000Z"
+      }
+    ],
+    "current_page": 1,
+    "per_page": 20,
+    "total": 1
+  }
+}
+```
+
+---
+
+### 7. Create Business Customer
+**POST** `/api/business/customers`
 
 **Headers:**
 ```
@@ -303,7 +373,205 @@ Content-Type: application/json
 **Request Body:**
 ```json
 {
-  "customer_account_number": "1234567890123456",
+  "business_name": "ABC Company",
+  "address": "123 Main Street, Lagos, Nigeria",
+  "contact_name": "John Doe",
+  "contact_phone": "08012345678",
+  "contact_email": "john@abccompany.com",
+  "minimum_purchase_amount": 50000,
+  "payment_plan_duration": 6,
+  "registration_number": "RC123456",
+  "tax_id": "TAX123456",
+  "notes": "Regular customer, 5% discount",
+  "status": "active"
+}
+```
+
+**Required Fields:**
+- `business_name` (string, max 255): Customer's business name (must be unique per business)
+
+**Optional Fields:**
+- `address` (string): Physical address
+- `contact_name` (string, max 255): Contact person name
+- `contact_phone` (string, max 20): Contact phone number
+- `contact_email` (email, max 255): Contact email address
+- `minimum_purchase_amount` (numeric, min: 0): Minimum purchase amount (default: 0)
+- `payment_plan_duration` (integer, min: 1, max: 36): Payment plan duration in months (default: 6)
+- `registration_number` (string, max 255): Business registration number
+- `tax_id` (string, max 255): Tax ID or VAT number
+- `notes` (string): Additional notes about the customer
+- `status` (enum: active, inactive, suspended): Customer status (default: active)
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "Business customer created successfully",
+  "customer": {
+    "id": 1,
+    "business_id": 1,
+    "business_name": "ABC Company",
+    "address": "123 Main Street, Lagos, Nigeria",
+    "contact_name": "John Doe",
+    "contact_phone": "08012345678",
+    "contact_email": "john@abccompany.com",
+    "minimum_purchase_amount": "50000.00",
+    "payment_plan_duration": 6,
+    "registration_number": "RC123456",
+    "tax_id": "TAX123456",
+    "notes": "Regular customer, 5% discount",
+    "status": "active",
+    "linked_customer_id": null,
+    "linked_at": null,
+    "created_at": "2024-01-15T10:00:00.000000Z",
+    "updated_at": "2024-01-15T10:00:00.000000Z"
+  }
+}
+```
+
+**Error Response (422 Unprocessable Entity):**
+```json
+{
+  "success": false,
+  "message": "A customer with this business name already exists"
+}
+```
+
+---
+
+### 8. Get Business Customer Details
+**GET** `/api/business/customers/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/customers/1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "customer": {
+    "id": 1,
+    "business_id": 1,
+    "business_name": "ABC Company",
+    "address": "123 Main Street, Lagos",
+    "contact_name": "John Doe",
+    "contact_phone": "08012345678",
+    "contact_email": "john@abccompany.com",
+    "minimum_purchase_amount": "50000.00",
+    "payment_plan_duration": 6,
+    "registration_number": "RC123456",
+    "tax_id": "TAX123456",
+    "status": "active",
+    "linked_customer_id": 5,
+    "linked_at": "2024-01-20T14:30:00.000000Z",
+    "linked_customer": {
+      "id": 5,
+      "account_number": "1234567890123456",
+      "business_name": "ABC Company",
+      "email": "customer@example.com"
+    },
+    "created_at": "2024-01-15T10:00:00.000000Z",
+    "updated_at": "2024-01-15T10:00:00.000000Z"
+  }
+}
+```
+
+**Note:** If the business customer is linked to a main customer (after payment), `linked_customer` object will be included in the response.
+
+---
+
+### 9. Update Business Customer
+**PUT** `/api/business/customers/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:** (All fields optional, only include fields to update)
+```json
+{
+  "business_name": "Updated Company Name",
+  "contact_phone": "08098765432",
+  "status": "active"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Business customer updated successfully",
+  "customer": {
+    "id": 1,
+    "business_name": "Updated Company Name",
+    "contact_phone": "08098765432",
+    "status": "active",
+    ...
+  }
+}
+```
+
+---
+
+### 10. Delete Business Customer
+**DELETE** `/api/business/customers/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**Request:**
+```bash
+curl -X DELETE "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/customers/1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Business customer deleted successfully"
+}
+```
+
+**Error Response (422 Unprocessable Entity):**
+```json
+{
+  "success": false,
+  "message": "Cannot delete customer with existing invoices"
+}
+```
+
+**Note:** You cannot delete a business customer that has invoices. You can change their status to 'inactive' instead.
+
+---
+
+### 11. Submit Invoice for Financing
+**POST** `/api/business/submit-invoice`
+
+**⚠️ IMPORTANT CHANGE:** This endpoint now uses `business_customer_id` instead of `customer_account_number`.
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "business_customer_id": 1,
   "amount": "50000.00",
   "purchase_date": "2024-01-15",
   "due_date": "2024-02-15",
@@ -320,7 +588,7 @@ Content-Type: application/json
 ```
 
 **Required Fields:**
-- `customer_account_number`: 16-digit customer account number
+- `business_customer_id` (integer): ID of your business customer (created via `/api/business/customers`)
 - `amount`: Invoice amount (numeric, min: 0.01)
 
 **Optional Fields:**
@@ -333,16 +601,19 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "message": "Invoice submitted and financed successfully",
+  "message": "Invoice created successfully",
   "invoice": {
     "invoice_id": "INV-2024-001",
+    "slug": "inv-abc123xyz456",
     "amount": "50000.00",
     "due_date": "2024-02-15",
-    "status": "pending"
+    "status": "pending",
+    "payment_link": "https://nodopay-api-0fbd4546e629.herokuapp.com/api/invoice/checkout/inv-abc123xyz456"
   },
-  "customer": {
-    "account_number": "1234567890123456",
-    "business_name": "ABC Company"
+  "business_customer": {
+    "id": 1,
+    "business_name": "ABC Company",
+    "is_linked": false
   },
   "transaction": {
     "transaction_reference": "TXN-2024-001",
@@ -351,7 +622,30 @@ Content-Type: application/json
 }
 ```
 
+**Important Notes:**
+- Invoice is created with status `'pending'` and does NOT affect customer balance yet
+- A payment link (slug) is automatically generated
+- Share the `payment_link` with your customer to collect payment
+- If the business customer is linked to a main customer, credit will be checked
+- If not linked, the invoice can still be created and paid later
+
 **Error Response (400 Bad Request):**
+```json
+{
+  "success": false,
+  "message": "Business is not approved or inactive"
+}
+```
+
+**Error Response (422 Unprocessable Entity):**
+```json
+{
+  "success": false,
+  "message": "The selected business customer does not exist or does not belong to your business."
+}
+```
+
+**Error Response (400 Bad Request - Insufficient Credit):**
 ```json
 {
   "success": false,
@@ -360,10 +654,14 @@ Content-Type: application/json
 }
 ```
 
+**Note:** This error only appears if the business customer is already linked to a main customer account.
+
 ---
 
-### 7. Check Customer Credit
+### 12. Check Customer Credit
 **POST** `/api/business/check-customer-credit`
+
+**⚠️ NOTE:** This endpoint checks credit for main customers (with account numbers). For business customers, credit is only checked if they are linked to a main customer account.
 
 **Headers:**
 ```
@@ -380,7 +678,7 @@ Content-Type: application/json
 ```
 
 **Required Fields:**
-- `customer_account_number`: 16-digit customer account number
+- `customer_account_number`: 16-digit customer account number (main customer)
 - `amount`: Amount to check (numeric, min: 0.01)
 
 **Response (200 OK):**
@@ -400,7 +698,7 @@ Content-Type: application/json
 
 ---
 
-### 8. Get All Transactions
+### 13. Get All Transactions
 **GET** `/api/business/transactions`
 
 **Headers:**
@@ -444,7 +742,7 @@ Authorization: Bearer YOUR_API_TOKEN
 
 ---
 
-### 9. Request Withdrawal
+### 14. Request Withdrawal
 **POST** `/api/business/withdrawals/request`
 
 **Headers:**
@@ -500,7 +798,7 @@ Content-Type: application/json
 
 ---
 
-### 10. Get All Withdrawals
+### 15. Get All Withdrawals
 **GET** `/api/business/withdrawals`
 
 **Headers:**
@@ -541,7 +839,7 @@ Authorization: Bearer YOUR_API_TOKEN
 
 ---
 
-### 11. Generate Invoice Link
+### 16. Generate Invoice Payment Link
 **POST** `/api/business/invoices/{invoiceId}/generate-link`
 
 **Headers:**

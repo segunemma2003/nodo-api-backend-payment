@@ -16,7 +16,8 @@ class Invoice extends Model
         'invoice_id',
         'slug',
         'is_used',
-        'customer_id',
+        'customer_id', // Main customer (nullable - linked when payment is made)
+        'business_customer_id', // Business customer (required for invoices from businesses)
         'supplier_id',
         'supplier_name',
         'principal_amount',
@@ -48,6 +49,11 @@ class Invoice extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function businessCustomer(): BelongsTo
+    {
+        return $this->belongsTo(BusinessCustomer::class, 'business_customer_id');
+    }
+
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Business::class, 'supplier_id');
@@ -66,6 +72,60 @@ class Invoice extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    /**
+     * Get items from the transaction metadata
+     */
+    public function getItems(): array
+    {
+        // Try to get items from credit_purchase transaction first
+        $transaction = $this->transactions()
+            ->where('type', 'credit_purchase')
+            ->whereNotNull('metadata')
+            ->first();
+
+        if ($transaction && isset($transaction->metadata['items']) && is_array($transaction->metadata['items'])) {
+            return $transaction->metadata['items'];
+        }
+
+        // Fallback: check any transaction with items
+        $transaction = $this->transactions()
+            ->whereNotNull('metadata')
+            ->first();
+
+        if ($transaction && isset($transaction->metadata['items']) && is_array($transaction->metadata['items'])) {
+            return $transaction->metadata['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Get description from the transaction metadata
+     */
+    public function getDescription(): ?string
+    {
+        // Try to get description from credit_purchase transaction first
+        $transaction = $this->transactions()
+            ->where('type', 'credit_purchase')
+            ->whereNotNull('metadata')
+            ->first();
+
+        if ($transaction && isset($transaction->metadata['description'])) {
+            return $transaction->metadata['description'];
+        }
+
+        // Fallback: check any transaction with description
+        $transaction = $this->transactions()
+            ->whereNotNull('metadata')
+            ->first();
+
+        if ($transaction && isset($transaction->metadata['description'])) {
+            return $transaction->metadata['description'];
+        }
+
+        return $this->description ?? null;
     }
 
     /**

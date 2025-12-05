@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BusinessCustomer;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payout;
@@ -66,6 +67,60 @@ class InvoiceService
     {
         $customer->updateBalances();
         return $customer->available_balance >= $amount && $customer->status === 'active';
+    }
+
+    /**
+     * Create invoice for a business customer
+     * This invoice will be linked to the main customer when payment is made
+     */
+    public function createInvoiceForBusinessCustomer(
+        BusinessCustomer $businessCustomer,
+        float $amount,
+        string $supplierName = 'Foodstuff Store',
+        ?Carbon $purchaseDate = null,
+        ?Carbon $dueDate = null,
+        ?int $supplierId = null
+    ): Invoice {
+        DB::beginTransaction();
+
+        try {
+            $purchaseDate = $purchaseDate ?? Carbon::now();
+            
+            // Use business customer's payment plan duration, or default to 6 months
+            $duration = $businessCustomer->payment_plan_duration ?? 6;
+            $dueDate = $dueDate ?? $purchaseDate->copy()->addMonths($duration);
+
+            // Generate slug for payment link
+            $slug = Invoice::generateSlug();
+
+            $invoice = Invoice::create([
+                'customer_id' => $businessCustomer->linked_customer_id, // Will be null if not linked yet
+                'business_customer_id' => $businessCustomer->id,
+                'supplier_id' => $supplierId,
+                'supplier_name' => $supplierName,
+                'principal_amount' => $amount,
+                'interest_amount' => 0,
+                'total_amount' => $amount,
+                'paid_amount' => 0,
+                'remaining_balance' => $amount,
+                'purchase_date' => $purchaseDate,
+                'due_date' => $dueDate,
+                'slug' => $slug,
+                'status' => 'pending',
+            ]);
+
+            // Do NOT update customer balances or process payout when invoice is created
+            // Balance will only be deducted when customer actually pays via checkout
+            // Payout will be processed when payment is made
+
+            DB::commit();
+
+            return $invoice;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Business customer invoice creation failed: ' . $e->getMessage());
+            throw $e;
+        }
     }
 }
 

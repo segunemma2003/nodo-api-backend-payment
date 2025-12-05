@@ -50,6 +50,7 @@ class CustomerDashboardController extends Controller
             $this->interestService->updateAllInvoices();
 
             return $customer->invoices()
+                ->with('transactions')
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($invoice) {
@@ -65,6 +66,8 @@ class CustomerDashboardController extends Controller
                     'remaining_balance' => $invoice->remaining_balance,
                     'supplier_name' => $invoice->supplier_name,
                     'months_overdue' => $invoice->months_overdue,
+                    'description' => $invoice->getDescription(),
+                    'items' => $invoice->getItems(),
                 ];
             });
         });
@@ -82,6 +85,7 @@ class CustomerDashboardController extends Controller
         $customer = $this->getCustomer($request);
         
         $invoice = $customer->invoices()
+            ->with('transactions')
             ->where('invoice_id', $invoiceId)
             ->firstOrFail();
 
@@ -102,6 +106,8 @@ class CustomerDashboardController extends Controller
                 'remaining_balance' => $invoice->remaining_balance,
                 'supplier_name' => $invoice->supplier_name,
                 'months_overdue' => $invoice->months_overdue,
+                'description' => $invoice->getDescription(),
+                'items' => $invoice->getItems(),
             ],
         ]);
     }

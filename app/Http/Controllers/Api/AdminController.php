@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\UploadFileToS3Job;
 use App\Models\Business;
+use App\Models\BusinessCustomer;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Withdrawal;
@@ -57,6 +58,8 @@ class AdminController extends Controller
             'payment_plan_duration' => $request->payment_plan_duration,
             'virtual_account_number' => $request->virtual_account_number,
             'virtual_account_bank' => $request->virtual_account_bank,
+            'approval_status' => 'approved', // Admin-created customers are auto-approved
+            'status' => 'active', // Admin-created customers are auto-active
         ]);
 
         // Calculate and set credit limit
@@ -159,6 +162,60 @@ class AdminController extends Controller
 
         return response()->json([
             'message' => 'Customer status updated successfully',
+            'customer' => $customer,
+        ]);
+    }
+
+    /**
+     * Approve or reject customer registration
+     */
+    public function updateCustomerApproval(Request $request, $id)
+    {
+        $request->validate([
+            'approval_status' => 'required|in:approved,rejected',
+            'credit_limit' => 'nullable|numeric|min:0', // Optional: set credit limit on approval
+        ]);
+
+        $customer = Customer::findOrFail($id);
+
+        if ($customer->approval_status === 'approved') {
+            return response()->json([
+                'message' => 'Customer is already approved',
+                'customer' => $customer,
+            ], 400);
+        }
+
+        $customer->approval_status = $request->approval_status;
+
+        if ($request->approval_status === 'approved') {
+            // Set status to active when approved
+            $customer->status = 'active';
+            
+            // Set credit limit if provided, otherwise calculate it
+            if ($request->has('credit_limit')) {
+                $customer->credit_limit = $request->credit_limit;
+            } else {
+                // Calculate credit limit: minimum_purchase_amount × (payment_plan_duration + 1)
+                $this->creditLimitService->updateCustomerCreditLimit($customer);
+            }
+
+            // Send notification to customer about approval
+            // $customer->notify(new CustomerApprovedNotification());
+        } else {
+            // If rejected, keep status as inactive
+            $customer->status = 'inactive';
+        }
+
+        $customer->save();
+
+        // Clear caches
+        Cache::forget('admin_customer_' . $id);
+        for ($page = 1; $page <= 20; $page++) {
+            Cache::forget('admin_customers_page_' . $page);
+        }
+
+        return response()->json([
+            'message' => 'Customer approval status updated successfully',
             'customer' => $customer,
         ]);
     }
@@ -302,7 +359,7 @@ class AdminController extends Controller
     {
         $this->interestService->updateAllInvoices();
 
-        $query = Invoice::with('customer')
+        $query = Invoice::with(['customer', 'businessCustomer', 'supplier', 'transactions'])
             ->orderBy('created_at', 'desc');
 
         if ($request->has('status')) {
@@ -314,6 +371,13 @@ class AdminController extends Controller
         }
 
         $invoices = $query->paginate(20);
+
+        // Add items and description to each invoice
+        $invoices->getCollection()->transform(function ($invoice) {
+            $invoice->items = $invoice->getItems();
+            $invoice->description = $invoice->getDescription();
+            return $invoice;
+        });
 
         return response()->json($invoices);
     }
@@ -583,6 +647,65 @@ class AdminController extends Controller
         return response()->json([
             'message' => 'Withdrawal processed successfully',
             'withdrawal' => $withdrawal->load('business'),
+        ]);
+    }
+
+    /**
+     * Get all business customers (separate from main customers)
+     */
+    public function getBusinessCustomers(Request $request)
+    {
+        $query = BusinessCustomer::with(['business', 'linkedCustomer'])
+            ->orderBy('created_at', 'desc');
+
+        // Filter by business
+        if ($request->has('business_id')) {
+            $query->where('business_id', $request->business_id);
+        }
+
+        // Filter by status
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Filter by linked status
+        if ($request->has('linked')) {
+            if ($request->linked === 'true') {
+                $query->whereNotNull('linked_customer_id');
+            } else {
+                $query->whereNull('linked_customer_id');
+            }
+        }
+
+        // Search
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%")
+                  ->orWhere('contact_name', 'like', "%{$search}%")
+                  ->orWhere('contact_phone', 'like', "%{$search}%")
+                  ->orWhere('contact_email', 'like', "%{$search}%")
+                  ->orWhere('registration_number', 'like', "%{$search}%");
+            });
+        }
+
+        $customers = $query->paginate($request->get('per_page', 20));
+
+        return response()->json([
+            'business_customers' => $customers,
+        ]);
+    }
+
+    /**
+     * Get a specific business customer
+     */
+    public function getBusinessCustomer($id)
+    {
+        $businessCustomer = BusinessCustomer::with(['business', 'linkedCustomer', 'invoices'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'business_customer' => $businessCustomer,
         ]);
     }
 }

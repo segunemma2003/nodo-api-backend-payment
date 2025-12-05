@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\InvoiceCheckoutController;
 
 // Authentication Routes
 Route::prefix('auth')->group(function () {
+    Route::post('/customer/register', [AuthController::class, 'customerRegister']);
     Route::post('/customer/login', [AuthController::class, 'customerLogin']);
     Route::post('/business/login', [BusinessController::class, 'login']);
     Route::post('/admin/login', [AuthController::class, 'adminLogin']);
@@ -48,23 +49,38 @@ Route::prefix('business')->middleware('business.auth')->group(function () {
     Route::get('/profile', [BusinessController::class, 'getProfile']);
     Route::put('/profile', [BusinessController::class, 'updateProfile']);
     Route::post('/generate-api-token', [BusinessController::class, 'generateApiToken']);
+    
+    // Business Customer Management
+    Route::get('/customers', [BusinessController::class, 'getCustomers']);
+    Route::post('/customers', [BusinessController::class, 'createCustomer']);
+    Route::get('/customers/{id}', [BusinessController::class, 'getCustomer']);
+    Route::put('/customers/{id}', [BusinessController::class, 'updateCustomer']);
+    Route::delete('/customers/{id}', [BusinessController::class, 'deleteCustomer']);
+    
+    // Invoice Management
     Route::post('/submit-invoice', [BusinessController::class, 'submitInvoice']);
     Route::post('/check-customer-credit', [BusinessController::class, 'checkCustomerCredit']);
+    Route::post('/invoices/{invoiceId}/generate-link', [BusinessController::class, 'generateInvoiceLink']);
+    
     Route::get('/transactions', [BusinessController::class, 'getTransactions']);
     Route::post('/withdrawals/request', [BusinessController::class, 'requestWithdrawal']);
     Route::get('/withdrawals', [BusinessController::class, 'getWithdrawals']);
-    Route::post('/invoices/{invoiceId}/generate-link', [BusinessController::class, 'generateInvoiceLink']);
 });
 
 // Admin Panel Routes
 Route::prefix('admin')->group(function () {
-    // Customer Management
+    // Customer Management (Main Customers)
     Route::post('/customers', [AdminController::class, 'createCustomer']);
     Route::get('/customers', [AdminController::class, 'getCustomers']);
     Route::get('/customers/{id}', [AdminController::class, 'getCustomer']);
     Route::put('/customers/{id}', [AdminController::class, 'updateCustomer']);
     Route::patch('/customers/{id}/credit-limit', [AdminController::class, 'updateCreditLimit']);
     Route::patch('/customers/{id}/status', [AdminController::class, 'updateCustomerStatus']);
+    Route::patch('/customers/{id}/approval', [AdminController::class, 'updateCustomerApproval']);
+    
+    // Business Customer Management (Customers created by businesses)
+    Route::get('/business-customers', [AdminController::class, 'getBusinessCustomers']);
+    Route::get('/business-customers/{id}', [AdminController::class, 'getBusinessCustomer']);
     
     // Invoice Management
     Route::get('/invoices', [AdminController::class, 'getAllInvoices']);

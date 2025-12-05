@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\BusinessCustomer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -40,6 +41,11 @@ class Business extends Authenticatable
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'supplier_id');
+    }
+
+    public function businessCustomers(): HasMany
+    {
+        return $this->hasMany(BusinessCustomer::class, 'business_id');
     }
 
     public function transactions(): HasMany

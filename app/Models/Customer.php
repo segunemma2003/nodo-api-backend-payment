@@ -30,6 +30,7 @@ class Customer extends Authenticatable
         'virtual_account_bank',
         'kyc_documents',
         'status',
+        'approval_status',
     ];
 
     protected $hidden = [

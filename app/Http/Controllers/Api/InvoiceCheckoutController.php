@@ -37,6 +37,8 @@ class InvoiceCheckoutController extends Controller
             ], 400);
         }
 
+        $invoice->load('transactions');
+
         return response()->json([
             'invoice' => [
                 'id' => $invoice->id,
@@ -50,6 +52,8 @@ class InvoiceCheckoutController extends Controller
                     'id' => $invoice->supplier?->id,
                     'business_name' => $invoice->supplier?->business_name ?? $invoice->supplier_name,
                 ],
+                'description' => $invoice->getDescription(),
+                'items' => $invoice->getItems(),
             ],
         ]);
     }
@@ -88,11 +92,15 @@ class InvoiceCheckoutController extends Controller
             ], 400);
         }
 
-        if ($invoice->customer_id !== $customer->id) {
+        // If invoice has a customer_id, verify it matches
+        if ($invoice->customer_id && $invoice->customer_id !== $customer->id) {
             return response()->json([
                 'message' => 'This invoice does not belong to the provided account',
             ], 400);
         }
+
+        // If invoice was created from business_customer and not linked yet, we'll link it during payment
+        $businessCustomer = $invoice->businessCustomer;
 
         if ($invoice->status === 'paid') {
             $invoice->is_used = true;
@@ -105,7 +113,19 @@ class InvoiceCheckoutController extends Controller
 
         $paymentAmount = $invoice->remaining_balance;
 
+        // Link business customer to main customer if invoice was from business customer
+        if ($businessCustomer && !$businessCustomer->isLinked()) {
+            $businessCustomer->linkToCustomer($customer);
+        }
+        
+        // Ensure invoice is linked to customer (important for showing in customer's invoice list)
+        if (!$invoice->customer_id) {
+            $invoice->customer_id = $customer->id;
+            $invoice->save();
+        }
+
         // Process payment for this specific invoice
+        // Invoice is now linked to customer, so it will appear in customer's invoice list
         $this->paymentService->processInvoicePayment($customer, $invoice, $paymentAmount);
 
         $invoice->refresh();
