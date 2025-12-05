@@ -14,6 +14,8 @@ class Invoice extends Model
 
     protected $fillable = [
         'invoice_id',
+        'slug',
+        'is_used',
         'customer_id',
         'supplier_id',
         'supplier_name',
@@ -66,6 +68,18 @@ class Invoice extends Model
         return $this->hasMany(Transaction::class);
     }
 
+    /**
+     * Generate a unique slug for invoice link
+     */
+    public static function generateSlug(): string
+    {
+        do {
+            $slug = 'inv-' . strtolower(uniqid() . '-' . bin2hex(random_bytes(4)));
+        } while (self::where('slug', $slug)->exists());
+
+        return $slug;
+    }
+
     protected static function boot()
     {
         parent::boot();
@@ -78,6 +92,7 @@ class Invoice extends Model
                 $invoice->grace_period_end_date = Carbon::parse($invoice->due_date)->addDays(30);
             }
             $invoice->remaining_balance = $invoice->total_amount;
+            $invoice->is_used = false;
         });
     }
 }

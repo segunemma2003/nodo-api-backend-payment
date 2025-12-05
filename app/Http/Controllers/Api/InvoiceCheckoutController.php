@@ -1,0 +1,119 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Invoice;
+use App\Models\Customer;
+use App\Services\PaymentService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+
+class InvoiceCheckoutController extends Controller
+{
+    protected PaymentService $paymentService;
+
+    public function __construct(PaymentService $paymentService)
+    {
+        $this->paymentService = $paymentService;
+    }
+
+    /**
+     * Get invoice details by slug (public endpoint)
+     */
+    public function getInvoiceBySlug($slug)
+    {
+        $invoice = Invoice::with(['customer', 'supplier'])
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        if ($invoice->is_used) {
+            return response()->json([
+                'message' => 'This invoice link has already been used',
+                'invoice' => [
+                    'invoice_id' => $invoice->invoice_id,
+                    'status' => $invoice->status,
+                ],
+            ], 400);
+        }
+
+        return response()->json([
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_id' => $invoice->invoice_id,
+                'amount' => $invoice->total_amount,
+                'remaining_balance' => $invoice->remaining_balance,
+                'status' => $invoice->status,
+                'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
+                'due_date' => $invoice->due_date->format('Y-m-d'),
+                'supplier' => [
+                    'id' => $invoice->supplier?->id,
+                    'business_name' => $invoice->supplier?->business_name ?? $invoice->supplier_name,
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Process payment via invoice link
+     */
+    public function payInvoice(Request $request, $slug)
+    {
+        $request->validate([
+            'account_number' => 'required|string|digits:16|exists:customers,account_number',
+            'pin' => 'required|string|size:4',
+        ]);
+
+        $invoice = Invoice::where('slug', $slug)
+            ->firstOrFail();
+
+        if ($invoice->is_used) {
+            return response()->json([
+                'message' => 'This invoice link has already been used',
+            ], 400);
+        }
+
+        $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
+
+        if (!$customer->verifyPinForPayment($request->pin)) {
+            return response()->json([
+                'message' => 'Invalid PIN. Please use your payment PIN (not the default 0000)',
+            ], 400);
+        }
+
+        if ($invoice->customer_id !== $customer->id) {
+            return response()->json([
+                'message' => 'This invoice does not belong to the provided account',
+            ], 400);
+        }
+
+        if ($invoice->status === 'paid') {
+            $invoice->is_used = true;
+            $invoice->save();
+            return response()->json([
+                'message' => 'Invoice is already paid',
+                'invoice' => $invoice,
+            ], 400);
+        }
+
+        $paymentAmount = $invoice->remaining_balance;
+
+        $this->paymentService->processRepayment($customer, $invoice, $paymentAmount);
+
+        $invoice->refresh();
+        $invoice->is_used = true;
+        $invoice->save();
+
+        return response()->json([
+            'message' => 'Payment processed successfully',
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_id' => $invoice->invoice_id,
+                'status' => $invoice->status,
+                'paid_amount' => $invoice->paid_amount,
+                'remaining_balance' => $invoice->remaining_balance,
+            ],
+        ]);
+    }
+}
+

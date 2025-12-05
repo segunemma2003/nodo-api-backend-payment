@@ -31,6 +31,7 @@ class PayWithNodopayController extends Controller
         $request->validate([
             'account_number' => 'required|string|size:16|exists:customers,account_number',
             'customer_email' => 'required|email',
+            'pin' => 'required|string|size:4',
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
             'order_reference' => 'nullable|string',
@@ -64,6 +65,13 @@ class PayWithNodopayController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Customer email mismatch',
+                ], 400);
+            }
+
+            if (!$customer->verifyPinForPayment($request->pin)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid PIN. Please use your payment PIN (not the default 0000)',
                 ], 400);
             }
 

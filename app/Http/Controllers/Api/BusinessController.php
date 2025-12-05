@@ -303,26 +303,36 @@ class BusinessController extends Controller
         return response()->json($withdrawals);
     }
 
-    // public function getProfile(Request $request)
-    // {
-    //     $business = $this->getBusiness($request);
+    public function generateInvoiceLink(Request $request, $invoiceId)
+    {
+        $business = $this->getBusiness($request);
 
-    //     return response()->json([
-    //         'business' => [
-    //             'id' => $business->id,
-    //             'business_name' => $business->business_name,
-    //             'email' => $business->email,
-    //             'username' => $business->username,
-    //             'phone' => $business->phone,
-    //             'address' => $business->address,
-    //             'approval_status' => $business->approval_status,
-    //             'status' => $business->status,
-    //             'api_token' => $business->api_token,
-    //             'webhook_url' => $business->webhook_url,
-    //             'kyc_documents' => $business->kyc_documents,
-    //         ],
-    //     ]);
-    // }
+        $invoice = Invoice::where('id', $invoiceId)
+            ->where('supplier_id', $business->id)
+            ->firstOrFail();
+
+        if (empty($invoice->slug)) {
+            $invoice->slug = Invoice::generateSlug();
+            $invoice->save();
+        }
+
+        $frontendUrl = env('FRONTEND_URL', env('APP_URL', 'https://nodopay.com'));
+        $invoiceLink = rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug;
+
+        return response()->json([
+            'message' => 'Invoice link generated successfully',
+            'invoice_link' => $invoiceLink,
+            'slug' => $invoice->slug,
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_id' => $invoice->invoice_id,
+                'amount' => $invoice->total_amount,
+                'status' => $invoice->status,
+                'is_used' => $invoice->is_used,
+            ],
+        ]);
+    }
+
 
     public function updateProfile(Request $request)
     {

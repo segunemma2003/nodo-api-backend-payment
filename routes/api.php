@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\PayWithNodopayController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\TestController;
+use App\Http\Controllers\Api\InvoiceCheckoutController;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +38,7 @@ Route::prefix('customer')->group(function () {
     Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
     Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
     Route::put('/profile', [CustomerDashboardController::class, 'updateProfile']);
+    Route::post('/change-pin', [CustomerDashboardController::class, 'changePin']);
 });
 
 // Business Dashboard Routes
@@ -51,6 +53,7 @@ Route::prefix('business')->group(function () {
     Route::get('/transactions', [BusinessController::class, 'getTransactions']);
     Route::post('/withdrawals/request', [BusinessController::class, 'requestWithdrawal']);
     Route::get('/withdrawals', [BusinessController::class, 'getWithdrawals']);
+    Route::post('/invoices/{invoiceId}/generate-link', [BusinessController::class, 'generateInvoiceLink']);
 });
 
 // Admin Panel Routes
@@ -97,6 +100,12 @@ Route::prefix('payments')->group(function () {
     Route::post('/webhook', [PaymentController::class, 'paymentWebhook']);
     Route::post('/record', [PaymentController::class, 'recordPayment']);
     Route::get('/history/{customerId}', [PaymentController::class, 'getPaymentHistory']);
+});
+
+// Public Invoice Checkout Routes
+Route::prefix('invoice')->group(function () {
+    Route::get('/checkout/{slug}', [InvoiceCheckoutController::class, 'getInvoiceBySlug']);
+    Route::post('/checkout/{slug}/pay', [InvoiceCheckoutController::class, 'payInvoice']);
 });
 
 // Test Routes

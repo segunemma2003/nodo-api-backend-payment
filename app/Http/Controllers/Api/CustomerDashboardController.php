@@ -230,6 +230,38 @@ class CustomerDashboardController extends Controller
     }
 
     /**
+     * Change customer PIN
+     */
+    public function changePin(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+
+        $request->validate([
+            'current_pin' => 'required|string|size:4',
+            'new_pin' => 'required|string|size:4|regex:/^[0-9]{4}$/',
+        ]);
+
+        if (!$customer->verifyPinForChange($request->current_pin)) {
+            return response()->json([
+                'message' => 'Invalid current PIN',
+            ], 400);
+        }
+
+        if ($request->new_pin === '0000') {
+            return response()->json([
+                'message' => 'New PIN cannot be the default PIN (0000)',
+            ], 400);
+        }
+
+        $customer->pin = $request->new_pin;
+        $customer->save();
+
+        return response()->json([
+            'message' => 'PIN changed successfully',
+        ]);
+    }
+
+    /**
      * Helper to get customer from request
      */
     protected function getCustomer(Request $request): Customer
