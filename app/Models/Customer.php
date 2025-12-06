@@ -67,18 +67,11 @@ class Customer extends Authenticatable
 
     public function updateBalances(): void
     {
-        // Calculate current balance (amount customer owes the platform):
-        // 1. Unpaid invoices (status != 'paid' and != 'pending') - customer hasn't paid business yet
-        // 2. Paid invoices where credit is not fully repaid - customer paid business using credit, but hasn't repaid platform
-        //    For paid invoices: remaining_balance = total_amount - credit_repaid_amount
-        
         $unpaidInvoices = $this->invoices()
             ->where('status', '!=', 'paid')
             ->where('status', '!=', 'pending')
             ->sum('remaining_balance');
         
-        // For paid invoices, calculate what customer still owes: total_amount - credit_repaid_amount
-        // Use DB::raw to calculate in the database for better performance
         $creditNotRepaid = $this->invoices()
             ->where('status', 'paid')
             ->where(function ($query) {
@@ -88,8 +81,6 @@ class Customer extends Authenticatable
             ->selectRaw('SUM(GREATEST(0, total_amount - COALESCE(credit_repaid_amount, 0))) as total')
             ->value('total') ?? 0;
         
-        // Update remaining_balance for paid invoices in bulk
-        // Only update if the calculated value would be different to avoid unnecessary writes
         $this->invoices()
             ->where('status', 'paid')
             ->where(function ($query) {

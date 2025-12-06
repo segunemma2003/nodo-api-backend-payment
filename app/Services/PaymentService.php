@@ -60,9 +60,7 @@ class PaymentService
                     break;
                 }
 
-                // Check if this is a repayment of credit (invoice already paid to business)
                 if ($invoice->status === 'paid') {
-                    // This payment is repaying the credit used for this invoice
                     $remainingCreditToRepay = $invoice->total_amount - ($invoice->credit_repaid_amount ?? 0);
                     $paymentAmount = min($remainingAmount, $remainingCreditToRepay);
                     
@@ -71,8 +69,8 @@ class PaymentService
                     if ($invoice->credit_repaid_amount >= $invoice->total_amount) {
                         $invoice->credit_repaid_status = 'fully_paid';
                         $invoice->credit_repaid_at = now();
-                        $invoice->credit_repaid_amount = $invoice->total_amount; // Cap at total amount
-                        $invoice->remaining_balance = 0; // Fully repaid, no balance owed
+                        $invoice->credit_repaid_amount = $invoice->total_amount;
+                        $invoice->remaining_balance = 0;
                     } elseif ($invoice->credit_repaid_amount > 0) {
                         $invoice->credit_repaid_status = 'partially_paid';
                         $invoice->remaining_balance = $invoice->total_amount - $invoice->credit_repaid_amount;
@@ -81,7 +79,6 @@ class PaymentService
                         $invoice->remaining_balance = $invoice->total_amount;
                     }
                 } else {
-                    // Invoice is being paid for the first time
                     $paymentAmount = min($remainingAmount, $invoice->remaining_balance);
                     $invoice->paid_amount += $paymentAmount;
                     $invoice->remaining_balance -= $paymentAmount;
@@ -89,7 +86,6 @@ class PaymentService
                     if ($invoice->remaining_balance <= 0) {
                         $invoice->status = 'paid';
                         $invoice->remaining_balance = 0;
-                        // Credit repayment status remains 'pending' until customer repays the credit
                         if ($invoice->credit_repaid_status === null) {
                             $invoice->credit_repaid_status = 'pending';
                             $invoice->credit_repaid_amount = 0;
@@ -173,22 +169,14 @@ class PaymentService
         return $payout;
     }
 
-    /**
-     * Process payment for a specific invoice (used for invoice checkout payments)
-     */
     public function processInvoicePayment(Customer $customer, Invoice $invoice, float $amount): Payment
     {
         DB::beginTransaction();
 
         try {
-            // Calculate and apply interest BEFORE payment
-            // Interest (3.5% base) is always calculated, even if due_date is null
-            // This ensures interest is included in the amount owed
             if ($invoice->status !== 'paid') {
                 $this->interestService->updateInvoiceStatus($invoice);
-                $invoice->refresh(); // Refresh to get updated interest_amount and total_amount
-                
-                // Recalculate remaining balance with interest
+                $invoice->refresh();
                 $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
             }
 
@@ -201,46 +189,24 @@ class PaymentService
                 'paid_at' => now(),
             ]);
 
-            // When invoice is paid via checkout, customer is using credit to pay the business
-            // Business receives only principal_amount (interest belongs to admin/platform)
-            // Customer still owes the credit back (principal + interest)
-            
-            // Calculate total amount owed (principal + interest) if not already calculated
             if ($invoice->total_amount <= $invoice->principal_amount) {
-                // Interest should have been calculated by updateInvoiceStatus above
-                // But if not, ensure total_amount includes interest
                 $invoice->total_amount = $invoice->principal_amount + $invoice->interest_amount;
             }
 
-            // Business is paid only the principal amount (interest goes to admin)
             $invoice->paid_amount = $invoice->principal_amount;
-            
-            // Invoice status = 'paid' so business knows they received payment
             $invoice->status = 'paid';
 
-            // Set credit repayment status - customer owes this credit back
-            // This tracks if the customer has repaid the credit they used
-            // remaining_balance will be calculated as total_amount - credit_repaid_amount in updateBalances()
             if ($invoice->credit_repaid_status === null) {
                 $invoice->credit_repaid_status = 'pending';
                 $invoice->credit_repaid_amount = 0;
             }
             
-            // Initially, customer owes the full total_amount (principal + interest)
-            // This will be updated in updateBalances() based on credit_repaid_amount
             $invoice->remaining_balance = $invoice->total_amount;
-
             $invoice->save();
 
-            // Load supplier to ensure relationship is available
             $invoice->load('supplier');
-
-            // Update customer balances - credit is deducted because invoice is 'paid' with credit_repaid_status = 'pending'
-            // The invoice's remaining_balance (which includes interest) reduces available_balance
-            // This ensures credit is only deducted when customer actually pays with card/CVV, not when invoice is created
             $customer->updateBalances();
 
-            // Create transaction record
             Transaction::create([
                 'customer_id' => $customer->id,
                 'invoice_id' => $invoice->id,
@@ -251,8 +217,6 @@ class PaymentService
                 'processed_at' => now(),
             ]);
 
-            // Process payout to business - business should receive payment when customer uses credit
-            // Payout is based on principal_amount (not total_amount with interest)
             if ($invoice->supplier_id && !$invoice->payouts()->exists()) {
                 $this->processPayout($invoice);
             }
