@@ -128,7 +128,8 @@ class InvoiceCheckoutController extends Controller
         }
 
         // Calculate interest BEFORE getting payment amount to ensure it's included
-        if ($invoice->due_date && $invoice->status !== 'paid') {
+        // Interest is always calculated (3.5% base), even if due_date is null
+        if ($invoice->status !== 'paid') {
             $this->interestService->updateInvoiceStatus($invoice);
             $invoice->refresh();
         }

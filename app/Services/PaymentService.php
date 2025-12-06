@@ -178,9 +178,10 @@ class PaymentService
         DB::beginTransaction();
 
         try {
-            // Calculate and apply interest BEFORE payment (if invoice is overdue)
+            // Calculate and apply interest BEFORE payment
+            // Interest (3.5% base) is always calculated, even if due_date is null
             // This ensures interest is included in the amount owed
-            if ($invoice->due_date && $invoice->status !== 'paid') {
+            if ($invoice->status !== 'paid') {
                 $this->interestService->updateInvoiceStatus($invoice);
                 $invoice->refresh(); // Refresh to get updated interest_amount and total_amount
                 
