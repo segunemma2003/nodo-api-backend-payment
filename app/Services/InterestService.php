@@ -60,21 +60,26 @@ class InterestService
     /**
      * Update invoice status based on dates and calculate interest
      * Interest (3.5% base) is always calculated, even without due_date
-     * For paid invoices, we still update interest if it's 0 (for existing invoices)
+     * For paid invoices, we only update interest if it's 0 (for existing invoices)
+     * DO NOT recalculate remaining_balance for paid invoices - that's handled by updateBalances()
      */
     public function updateInvoiceStatus(Invoice $invoice): void
     {
-        // For paid invoices, only update if interest is 0 (to fix existing invoices)
-        // Otherwise, preserve the existing interest
-        if ($invoice->status === 'paid' && $invoice->interest_amount > 0) {
-            // Ensure remaining_balance includes interest for credit deduction
-            $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
-            $invoice->save();
-            return;
+        // For paid invoices, only update interest if it's 0 (to fix existing invoices)
+        // DO NOT touch remaining_balance - it's calculated as total_amount - credit_repaid_amount in updateBalances()
+        if ($invoice->status === 'paid') {
+            // Only update interest if it's missing (0), otherwise preserve existing values
+            if ($invoice->interest_amount == 0) {
+                $interest = $this->calculateInterest($invoice);
+                $invoice->interest_amount = $interest;
+                $invoice->total_amount = $invoice->principal_amount + $interest;
+                // DO NOT update remaining_balance here - it's managed by updateBalances()
+                $invoice->save();
+            }
+            return; // Exit early for paid invoices
         }
 
-        // Calculate interest (3.5% always, + 3.5% if grace period exceeded)
-        // Interest is calculated even if due_date is null
+        // For unpaid invoices, calculate interest and update status
         $interest = $this->calculateInterest($invoice);
         $invoice->interest_amount = $interest;
         $invoice->total_amount = $invoice->principal_amount + $interest;
@@ -115,28 +120,38 @@ class InterestService
 
     /**
      * Update all invoices status and interest
-     * Includes paid invoices with pending credit repayment (to recalculate interest if needed)
+     * Only updates unpaid invoices to avoid overwriting correct values for paid invoices
+     * Paid invoices' remaining_balance is managed by Customer::updateBalances()
      */
     public function updateAllInvoices(): void
     {
-        // Get unpaid invoices
+        // Only update unpaid invoices - paid invoices are handled separately
+        // This prevents overwriting correct remaining_balance values for paid invoices
         $unpaidInvoices = Invoice::where('status', '!=', 'paid')->get();
         
-        // Get paid invoices where credit is not fully repaid (need interest for credit deduction)
-        $paidInvoicesWithPendingCredit = Invoice::where('status', 'paid')
+        foreach ($unpaidInvoices as $invoice) {
+            $this->updateInvoiceStatus($invoice);
+        }
+        
+        // For paid invoices, only update interest if it's 0 (one-time fix for existing invoices)
+        // This should only run once to fix existing data, not on every call
+        $paidInvoicesWithMissingInterest = Invoice::where('status', 'paid')
+            ->where('interest_amount', 0)
             ->where(function ($query) {
                 $query->whereNull('credit_repaid_status')
                       ->orWhere('credit_repaid_status', '!=', 'fully_paid');
             })
             ->get();
         
-        // Update all invoices
-        foreach ($unpaidInvoices as $invoice) {
-            $this->updateInvoiceStatus($invoice);
-        }
-        
-        foreach ($paidInvoicesWithPendingCredit as $invoice) {
-            $this->updateInvoiceStatus($invoice);
+        foreach ($paidInvoicesWithMissingInterest as $invoice) {
+            // Only update interest, not remaining_balance
+            $interest = $this->calculateInterest($invoice);
+            if ($interest > 0) {
+                $invoice->interest_amount = $interest;
+                $invoice->total_amount = $invoice->principal_amount + $interest;
+                // DO NOT update remaining_balance - it's managed by updateBalances()
+                $invoice->save();
+            }
         }
     }
 }

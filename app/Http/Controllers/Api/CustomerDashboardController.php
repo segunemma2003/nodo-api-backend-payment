@@ -47,9 +47,12 @@ class CustomerDashboardController extends Controller
     public function getDashboard(Request $request)
     {
         $customer = $this->getCustomer($request);
-        $customer->updateBalances();
         
+        // Update invoice interest first (only for unpaid invoices)
         $this->interestService->updateAllInvoices();
+        
+        // Then update balances (this calculates remaining_balance for paid invoices)
+        $customer->updateBalances();
 
         // Invoice Statistics
         $totalInvoices = $customer->invoices()->count();

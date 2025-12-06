@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Customer extends Authenticatable
 {
@@ -66,23 +67,39 @@ class Customer extends Authenticatable
 
     public function updateBalances(): void
     {
-        // Calculate current balance from:
-        // 1. Invoices that are not 'paid' and not 'pending' (unpaid invoices)
-        // 2. Invoices that are 'paid' but credit is not fully repaid (credit_repaid_status != 'fully_paid')
-        //    - These represent credit used to pay businesses that customer still owes back
+        // Calculate current balance (amount customer owes the platform):
+        // 1. Unpaid invoices (status != 'paid' and != 'pending') - customer hasn't paid business yet
+        // 2. Paid invoices where credit is not fully repaid - customer paid business using credit, but hasn't repaid platform
+        //    For paid invoices: remaining_balance = total_amount - credit_repaid_amount
         
         $unpaidInvoices = $this->invoices()
             ->where('status', '!=', 'paid')
             ->where('status', '!=', 'pending')
             ->sum('remaining_balance');
         
+        // For paid invoices, calculate what customer still owes: total_amount - credit_repaid_amount
+        // Use DB::raw to calculate in the database for better performance
         $creditNotRepaid = $this->invoices()
             ->where('status', 'paid')
             ->where(function ($query) {
                 $query->whereNull('credit_repaid_status')
                       ->orWhere('credit_repaid_status', '!=', 'fully_paid');
             })
-            ->sum('remaining_balance');
+            ->selectRaw('SUM(GREATEST(0, total_amount - COALESCE(credit_repaid_amount, 0))) as total')
+            ->value('total') ?? 0;
+        
+        // Update remaining_balance for paid invoices in bulk
+        // Only update if the calculated value would be different to avoid unnecessary writes
+        $this->invoices()
+            ->where('status', 'paid')
+            ->where(function ($query) {
+                $query->whereNull('credit_repaid_status')
+                      ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+            })
+            ->whereRaw('remaining_balance != GREATEST(0, total_amount - COALESCE(credit_repaid_amount, 0))')
+            ->update([
+                'remaining_balance' => DB::raw('GREATEST(0, total_amount - COALESCE(credit_repaid_amount, 0))')
+            ]);
         
         $this->current_balance = $unpaidInvoices + $creditNotRepaid;
         $this->available_balance = max(0, $this->credit_limit - $this->current_balance);

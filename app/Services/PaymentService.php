@@ -72,10 +72,13 @@ class PaymentService
                         $invoice->credit_repaid_status = 'fully_paid';
                         $invoice->credit_repaid_at = now();
                         $invoice->credit_repaid_amount = $invoice->total_amount; // Cap at total amount
+                        $invoice->remaining_balance = 0; // Fully repaid, no balance owed
                     } elseif ($invoice->credit_repaid_amount > 0) {
                         $invoice->credit_repaid_status = 'partially_paid';
+                        $invoice->remaining_balance = $invoice->total_amount - $invoice->credit_repaid_amount;
                     } else {
                         $invoice->credit_repaid_status = 'pending';
+                        $invoice->remaining_balance = $invoice->total_amount;
                     }
                 } else {
                     // Invoice is being paid for the first time
@@ -212,27 +215,29 @@ class PaymentService
             // Business is paid only the principal amount (interest goes to admin)
             $invoice->paid_amount = $invoice->principal_amount;
             
-            // Customer still owes the credit back (principal + interest)
-            // remaining_balance = total_amount ensures credit is deducted
-            $invoice->remaining_balance = $invoice->total_amount;
-
             // Invoice status = 'paid' so business knows they received payment
             $invoice->status = 'paid';
 
             // Set credit repayment status - customer owes this credit back
             // This tracks if the customer has repaid the credit they used
+            // remaining_balance will be calculated as total_amount - credit_repaid_amount in updateBalances()
             if ($invoice->credit_repaid_status === null) {
                 $invoice->credit_repaid_status = 'pending';
                 $invoice->credit_repaid_amount = 0;
             }
+            
+            // Initially, customer owes the full total_amount (principal + interest)
+            // This will be updated in updateBalances() based on credit_repaid_amount
+            $invoice->remaining_balance = $invoice->total_amount;
 
             $invoice->save();
 
             // Load supplier to ensure relationship is available
             $invoice->load('supplier');
 
-            // Update customer balances - credit is deducted because invoice is 'in_grace' or 'overdue'
+            // Update customer balances - credit is deducted because invoice is 'paid' with credit_repaid_status = 'pending'
             // The invoice's remaining_balance (which includes interest) reduces available_balance
+            // This ensures credit is only deducted when customer actually pays with card/CVV, not when invoice is created
             $customer->updateBalances();
 
             // Create transaction record
