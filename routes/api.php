@@ -33,10 +33,12 @@ Route::prefix('auth')->group(function () {
 // Customer Dashboard Routes
 Route::prefix('customer')->group(function () {
     Route::get('/credit-overview', [CustomerDashboardController::class, 'getCreditOverview']);
+    Route::get('/dashboard', [CustomerDashboardController::class, 'getDashboard']);
     Route::get('/invoices', [CustomerDashboardController::class, 'getInvoices']);
     Route::get('/invoices/{invoiceId}', [CustomerDashboardController::class, 'getInvoice']);
     Route::get('/transactions', [CustomerDashboardController::class, 'getTransactions']);
     Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
+    Route::post('/submit-payment', [CustomerDashboardController::class, 'submitPaymentClaim']);
     Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
     Route::put('/profile', [CustomerDashboardController::class, 'updateProfile']);
     Route::post('/change-pin', [CustomerDashboardController::class, 'changePin']);
@@ -106,6 +108,11 @@ Route::prefix('admin')->group(function () {
     
     // Unified Transactions (All transaction types)
     Route::get('/transactions/all', [AdminController::class, 'getAllTransactions']);
+    
+    // Payment Confirmation Management
+    Route::get('/payments/pending', [AdminController::class, 'getPendingPayments']);
+    Route::patch('/payments/{id}/confirm', [AdminController::class, 'confirmPayment']);
+    Route::patch('/payments/{id}/reject', [AdminController::class, 'rejectPayment']);
 });
 
 // Pay with Nodopay API (External Integration)

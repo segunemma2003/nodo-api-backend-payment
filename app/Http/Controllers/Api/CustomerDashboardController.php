@@ -42,6 +42,151 @@ class CustomerDashboardController extends Controller
     }
 
     /**
+     * Get customer dashboard with detailed statistics
+     */
+    public function getDashboard(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+        $customer->updateBalances();
+        
+        $this->interestService->updateAllInvoices();
+
+        // Invoice Statistics
+        $totalInvoices = $customer->invoices()->count();
+        $paidInvoices = $customer->invoices()->where('status', 'paid')->count();
+        $pendingInvoices = $customer->invoices()->where('status', 'pending')->count();
+        $inGraceInvoices = $customer->invoices()->where('status', 'in_grace')->count();
+        $overdueInvoices = $customer->invoices()->where('status', 'overdue')->count();
+
+        // Amount Statistics
+        $totalAmountOwed = $customer->invoices()
+            ->where('status', '!=', 'paid')
+            ->where('status', '!=', 'pending')
+            ->sum('remaining_balance');
+        
+        $totalAmountPaid = $customer->invoices()
+            ->where('status', 'paid')
+            ->sum('paid_amount');
+
+        $totalPrincipalPaid = $customer->invoices()
+            ->where('status', 'paid')
+            ->sum('principal_amount');
+
+        $totalInterestPaid = $customer->invoices()
+            ->where('status', 'paid')
+            ->sum('interest_amount');
+
+        // Credit Statistics
+        $creditUtilizationPercent = $customer->credit_limit > 0 
+            ? round(($customer->current_balance / $customer->credit_limit) * 100, 2)
+            : 0;
+
+        // Recent Transactions (last 5)
+        $recentTransactions = Transaction::where('customer_id', $customer->id)
+            ->with(['business', 'invoice'])
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function ($txn) {
+                return [
+                    'id' => $txn->id,
+                    'reference' => $txn->transaction_reference,
+                    'type' => $txn->type,
+                    'amount' => $txn->amount,
+                    'status' => $txn->status,
+                    'description' => $txn->description,
+                    'business_name' => $txn->business?->business_name,
+                    'created_at' => $txn->created_at->format('Y-m-d H:i:s'),
+                ];
+            });
+
+        // Upcoming Due Dates (next 5)
+        $upcomingDueDates = $customer->invoices()
+            ->where('status', '!=', 'paid')
+            ->whereNotNull('due_date')
+            ->where('due_date', '>=', now())
+            ->orderBy('due_date', 'asc')
+            ->limit(5)
+            ->get()
+            ->map(function ($invoice) {
+                return [
+                    'invoice_id' => $invoice->invoice_id,
+                    'due_date' => $invoice->due_date->format('Y-m-d'),
+                    'remaining_balance' => $invoice->remaining_balance,
+                    'total_amount' => $invoice->total_amount,
+                    'supplier_name' => $invoice->supplier_name,
+                    'days_until_due' => now()->diffInDays($invoice->due_date, false),
+                ];
+            });
+
+        // Payment Statistics
+        $totalPayments = Payment::where('customer_id', $customer->id)
+            ->where('status', 'completed')
+            ->count();
+        
+        $pendingPaymentConfirmations = Payment::where('customer_id', $customer->id)
+            ->where('admin_confirmation_status', 'pending')
+            ->count();
+
+        $totalPaidAmount = Payment::where('customer_id', $customer->id)
+            ->where('status', 'completed')
+            ->sum('amount');
+
+        // Credit Repayment Statistics
+        $creditFullyRepaid = $customer->invoices()
+            ->where('credit_repaid_status', 'fully_paid')
+            ->count();
+        
+        $creditPartiallyRepaid = $customer->invoices()
+            ->where('credit_repaid_status', 'partially_paid')
+            ->count();
+        
+        $creditPendingRepayment = $customer->invoices()
+            ->where('credit_repaid_status', 'pending')
+            ->orWhereNull('credit_repaid_status')
+            ->count();
+
+        return response()->json([
+            'customer' => [
+                'id' => $customer->id,
+                'business_name' => $customer->business_name,
+                'account_number' => $customer->account_number,
+            ],
+            'credit' => [
+                'credit_limit' => $customer->credit_limit,
+                'current_balance' => $customer->current_balance,
+                'available_balance' => $customer->available_balance,
+                'credit_utilization_percent' => $creditUtilizationPercent,
+            ],
+            'invoice_statistics' => [
+                'total_invoices' => $totalInvoices,
+                'paid_invoices' => $paidInvoices,
+                'pending_invoices' => $pendingInvoices,
+                'in_grace_invoices' => $inGraceInvoices,
+                'overdue_invoices' => $overdueInvoices,
+            ],
+            'amount_statistics' => [
+                'total_amount_owed' => (string) $totalAmountOwed,
+                'total_amount_paid' => (string) $totalAmountPaid,
+                'total_principal_paid' => (string) $totalPrincipalPaid,
+                'total_interest_paid' => (string) $totalInterestPaid,
+            ],
+            'payment_statistics' => [
+                'total_payments' => $totalPayments,
+                'pending_confirmations' => $pendingPaymentConfirmations,
+                'total_paid_amount' => (string) $totalPaidAmount,
+            ],
+            'credit_repayment_statistics' => [
+                'fully_repaid' => $creditFullyRepaid,
+                'partially_repaid' => $creditPartiallyRepaid,
+                'pending_repayment' => $creditPendingRepayment,
+            ],
+            'recent_transactions' => $recentTransactions,
+            'upcoming_due_dates' => $upcomingDueDates,
+        ]);
+    }
+
+    /**
      * Get all customer invoices
      */
     public function getInvoices(Request $request)
@@ -56,9 +201,9 @@ class CustomerDashboardController extends Controller
 
         $invoices = $customer->invoices()
             ->with('transactions')
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($invoice) {
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($invoice) {
                 return [
                     'invoice_id' => $invoice->invoice_id,
                     'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
@@ -78,7 +223,7 @@ class CustomerDashboardController extends Controller
                     'credit_repaid_amount' => $invoice->credit_repaid_amount ?? '0.00',
                     'credit_repaid_at' => $invoice->credit_repaid_at ? $invoice->credit_repaid_at->format('Y-m-d H:i:s') : null,
                 ];
-            });
+        });
 
         return response()->json([
             'invoices' => $invoices,
@@ -404,6 +549,66 @@ class CustomerDashboardController extends Controller
         return response()->json([
             'message' => 'PIN changed successfully',
         ]);
+    }
+
+    /**
+     * Submit payment claim (customer marks that they have paid)
+     */
+    public function submitPaymentClaim(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+
+        $request->validate([
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'amount' => 'required|numeric|min:0.01',
+            'transaction_reference' => 'required|string',
+            'payment_method' => 'nullable|string',
+            'payment_proof_url' => 'nullable|url',
+            'notes' => 'nullable|string',
+        ]);
+
+        // Verify invoice belongs to customer if provided
+        if ($request->has('invoice_id')) {
+            $invoice = $customer->invoices()->findOrFail($request->invoice_id);
+            
+            // Check if amount is valid for this invoice
+            if ($request->amount > $invoice->remaining_balance) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment amount exceeds invoice remaining balance',
+                    'remaining_balance' => $invoice->remaining_balance,
+                ], 400);
+            }
+        }
+
+        // Create payment claim with pending confirmation
+        $payment = Payment::create([
+            'customer_id' => $customer->id,
+            'invoice_id' => $request->invoice_id ?? null,
+            'amount' => $request->amount,
+            'payment_type' => 'repayment',
+            'status' => 'pending', // Payment not processed yet
+            'admin_confirmation_status' => 'pending', // Waiting for admin confirmation
+            'payment_method' => $request->payment_method,
+            'transaction_reference' => $request->transaction_reference,
+            'payment_proof_url' => $request->payment_proof_url,
+            'notes' => $request->notes,
+        ]);
+
+        Cache::forget('customer_invoices_' . $customer->id);
+        Cache::forget('customer_credit_' . $customer->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment claim submitted successfully. Awaiting admin confirmation.',
+            'payment' => [
+                'id' => $payment->id,
+                'payment_reference' => $payment->payment_reference,
+                'amount' => $payment->amount,
+                'admin_confirmation_status' => $payment->admin_confirmation_status,
+                'status' => $payment->status,
+            ],
+        ], 201);
     }
 
     /**

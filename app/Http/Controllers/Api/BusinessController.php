@@ -181,6 +181,7 @@ class BusinessController extends Controller
             'items.*.quantity' => 'required_with:items|integer|min:1',
             'items.*.price' => 'required_with:items|numeric|min:0.01',
             'items.*.description' => 'nullable|string',
+            'items.*.uom' => 'nullable|string', // Unit of Measure (e.g., "kg", "pieces", "liters", "boxes")
         ]);
 
         $businessCustomer = BusinessCustomer::where('business_id', $business->id)

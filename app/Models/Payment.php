@@ -17,6 +17,11 @@ class Payment extends Model
         'amount',
         'payment_type',
         'status',
+        'admin_confirmation_status',
+        'admin_confirmed_by',
+        'admin_confirmed_at',
+        'admin_rejection_reason',
+        'payment_proof_url',
         'payment_method',
         'transaction_reference',
         'notes',
@@ -26,6 +31,7 @@ class Payment extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'paid_at' => 'datetime',
+        'admin_confirmed_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo
@@ -36,6 +42,11 @@ class Payment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function adminConfirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'admin_confirmed_by');
     }
 
     protected static function boot()

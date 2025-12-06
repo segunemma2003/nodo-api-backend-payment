@@ -41,6 +41,7 @@ class PayWithNodopayController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.price' => 'required|numeric|min:0.01',
             'items.*.description' => 'nullable|string',
+            'items.*.uom' => 'nullable|string', // Unit of Measure (e.g., "kg", "pieces", "liters", "boxes")
         ]);
 
         try {

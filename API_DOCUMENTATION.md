@@ -1583,7 +1583,8 @@ These endpoints allow customers to view and pay invoices via unique invoice link
         "name": "Rice 50kg",
         "quantity": 10,
         "price": "5000.00",
-        "description": "Premium rice"
+        "description": "Premium rice",
+        "uom": "bags"
       }
     ]
   },

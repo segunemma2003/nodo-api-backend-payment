@@ -20,7 +20,9 @@ use App\Services\CreditLimitService;
 use App\Services\InterestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class AdminController extends Controller
@@ -1035,5 +1037,254 @@ class AdminController extends Controller
                 'to' => min($offset + $perPage, $total),
             ],
         ]);
+    }
+
+    /**
+     * Get all pending payment confirmations
+     */
+    public function getPendingPayments(Request $request)
+    {
+        $payments = Payment::with(['customer', 'invoice'])
+            ->where('admin_confirmation_status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->paginate($request->get('per_page', 20));
+
+        return response()->json([
+            'success' => true,
+            'payments' => $payments,
+        ]);
+    }
+
+    /**
+     * Confirm customer payment claim
+     */
+    public function confirmPayment(Request $request, $id)
+    {
+        $payment = Payment::with(['customer', 'invoice'])->findOrFail($id);
+
+        if ($payment->admin_confirmation_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Payment has already been {$payment->admin_confirmation_status}",
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Update payment confirmation status
+            $payment->admin_confirmation_status = 'confirmed';
+            $payment->admin_confirmed_by = $request->user()?->id;
+            $payment->admin_confirmed_at = now();
+            $payment->status = 'completed';
+            $payment->paid_at = now();
+            $payment->save();
+
+            $customer = $payment->customer;
+
+            // Process the payment if invoice is specified
+            if ($payment->invoice_id) {
+                $invoice = $payment->invoice;
+                
+                // Calculate interest if needed
+                if ($invoice->due_date && $invoice->status !== 'paid') {
+                    $this->interestService->updateInvoiceStatus($invoice);
+                    $invoice->refresh();
+                }
+
+                // Apply payment to invoice
+                $invoice->paid_amount += $payment->amount;
+                $invoice->remaining_balance -= $payment->amount;
+
+                // Check if this is credit repayment (invoice already paid to business)
+                if ($invoice->status === 'paid') {
+                    // This payment is repaying the credit used
+                    $remainingCreditToRepay = $invoice->total_amount - ($invoice->credit_repaid_amount ?? 0);
+                    $paymentAmount = min($payment->amount, $remainingCreditToRepay);
+                    
+                    $invoice->credit_repaid_amount = ($invoice->credit_repaid_amount ?? 0) + $paymentAmount;
+                    
+                    if ($invoice->credit_repaid_amount >= $invoice->total_amount) {
+                        $invoice->credit_repaid_status = 'fully_paid';
+                        $invoice->credit_repaid_at = now();
+                        $invoice->credit_repaid_amount = $invoice->total_amount;
+                    } elseif ($invoice->credit_repaid_amount > 0) {
+                        $invoice->credit_repaid_status = 'partially_paid';
+                    }
+                } else {
+                    // Invoice is being paid for the first time
+                    if ($invoice->remaining_balance <= 0) {
+                        $invoice->status = 'paid';
+                        $invoice->remaining_balance = 0;
+                        if ($invoice->credit_repaid_status === null) {
+                            $invoice->credit_repaid_status = 'pending';
+                            $invoice->credit_repaid_amount = 0;
+                        }
+                    } else {
+                        if ($invoice->status === 'pending') {
+                            $invoice->status = 'in_grace';
+                        }
+                    }
+                }
+
+                $invoice->save();
+
+                // Process payout to business if invoice is fully paid
+                if ($invoice->status === 'paid' && $invoice->supplier_id && !$invoice->payouts()->exists()) {
+                    $payoutService = app(\App\Services\PaymentService::class);
+                    $payoutService->processPayout($invoice);
+                }
+            } else {
+                // General repayment - apply to invoices in order
+                $this->processGeneralRepayment($customer, $payment->amount, $payment);
+            }
+
+            // Update customer balances
+            $customer->updateBalances();
+
+            // Create transaction record
+            Transaction::create([
+                'customer_id' => $customer->id,
+                'invoice_id' => $payment->invoice_id,
+                'type' => 'repayment',
+                'amount' => $payment->amount,
+                'status' => 'completed',
+                'description' => $payment->invoice_id 
+                    ? "Payment confirmed for invoice {$payment->invoice->invoice_id}"
+                    : "Payment confirmed: {$payment->payment_reference}",
+                'processed_at' => now(),
+            ]);
+
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+            Cache::forget('admin_customer_' . $customer->id);
+            Cache::forget('admin_dashboard_stats');
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment confirmed and processed successfully',
+                'payment' => $payment->load(['customer', 'invoice']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Payment confirmation failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment confirmation failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Reject customer payment claim
+     */
+    public function rejectPayment(Request $request, $id)
+    {
+        $request->validate([
+            'rejection_reason' => 'required|string',
+        ]);
+
+        $payment = Payment::with(['customer', 'invoice'])->findOrFail($id);
+
+        if ($payment->admin_confirmation_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Payment has already been {$payment->admin_confirmation_status}",
+            ], 400);
+        }
+
+        $payment->admin_confirmation_status = 'rejected';
+        $payment->admin_confirmed_by = $request->user()?->id;
+        $payment->admin_confirmed_at = now();
+        $payment->admin_rejection_reason = $request->rejection_reason;
+        $payment->save();
+
+        Cache::forget('customer_invoices_' . $payment->customer_id);
+        Cache::forget('customer_credit_' . $payment->customer_id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment claim rejected',
+            'payment' => $payment,
+        ]);
+    }
+
+    /**
+     * Process general repayment (when no specific invoice is provided)
+     */
+    protected function processGeneralRepayment(Customer $customer, float $amount, Payment $payment)
+    {
+        $invoices = $customer->invoices()
+            ->where(function ($query) {
+                $query->where('status', '!=', 'paid')
+                    ->orWhere(function ($q) {
+                        $q->where('status', 'paid')
+                          ->where(function ($subQ) {
+                              $subQ->whereNull('credit_repaid_status')
+                                   ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+                          });
+                    });
+            })
+            ->orderByRaw('due_date IS NULL, due_date ASC')
+            ->get();
+
+        $remainingAmount = $amount;
+
+        foreach ($invoices as $invoice) {
+            if ($remainingAmount <= 0) {
+                break;
+            }
+
+            if ($invoice->status === 'paid') {
+                // Repaying credit
+                $remainingCreditToRepay = $invoice->total_amount - ($invoice->credit_repaid_amount ?? 0);
+                $paymentAmount = min($remainingAmount, $remainingCreditToRepay);
+                
+                if ($paymentAmount > 0) {
+                    $invoice->credit_repaid_amount = ($invoice->credit_repaid_amount ?? 0) + $paymentAmount;
+                    
+                    if ($invoice->credit_repaid_amount >= $invoice->total_amount) {
+                        $invoice->credit_repaid_status = 'fully_paid';
+                        $invoice->credit_repaid_at = now();
+                        $invoice->credit_repaid_amount = $invoice->total_amount;
+                    } elseif ($invoice->credit_repaid_amount > 0) {
+                        $invoice->credit_repaid_status = 'partially_paid';
+                    }
+                    
+                    $invoice->save();
+                    $remainingAmount -= $paymentAmount;
+                }
+            } else {
+                // Paying invoice
+                $paymentAmount = min($remainingAmount, $invoice->remaining_balance);
+                
+                if ($invoice->due_date && $invoice->status !== 'paid') {
+                    $this->interestService->updateInvoiceStatus($invoice);
+                    $invoice->refresh();
+                }
+                
+                $invoice->paid_amount += $paymentAmount;
+                $invoice->remaining_balance -= $paymentAmount;
+
+                if ($invoice->remaining_balance <= 0) {
+                    $invoice->status = 'paid';
+                    $invoice->remaining_balance = 0;
+                    if ($invoice->credit_repaid_status === null) {
+                        $invoice->credit_repaid_status = 'pending';
+                        $invoice->credit_repaid_amount = 0;
+                    }
+                } else {
+                    if ($invoice->status === 'pending') {
+                        $invoice->status = 'in_grace';
+                    }
+                }
+
+                $invoice->save();
+                $payment->invoice_id = $invoice->id;
+                $payment->save();
+                $remainingAmount -= $paymentAmount;
+            }
+        }
     }
 }

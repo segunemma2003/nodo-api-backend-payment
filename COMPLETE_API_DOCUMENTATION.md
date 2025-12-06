@@ -451,7 +451,8 @@ All payments create:
       "name": "Product Name",
       "quantity": 2,
       "price": "5000.00",
-      "description": "Product description"
+      "description": "Product description",
+      "uom": "pieces"
     }
   ],
   "credit_repaid_status": "pending",      // NEW FIELD

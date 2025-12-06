@@ -564,7 +564,8 @@ Content-Type: application/json
       "name": "Rice 50kg",
       "quantity": 10,
       "price": "5000.00",
-      "description": "Premium rice"
+      "description": "Premium rice",
+      "uom": "bags"
     }
   ]
 }
@@ -579,6 +580,11 @@ Content-Type: application/json
 - `due_date`: Due date for payment (YYYY-MM-DD)
 - `description`: Description of the invoice
 - `items`: Array of purchased items
+  - `name` (required): Item name
+  - `quantity` (required): Quantity purchased (integer, min: 1)
+  - `price` (required): Unit price (numeric, min: 0.01)
+  - `description` (optional): Item description
+  - `uom` (optional): Unit of Measure (e.g., "kg", "pieces", "liters", "boxes", "bags")
 
 **Response (201 Created):**
 ```json
