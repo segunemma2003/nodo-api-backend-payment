@@ -66,13 +66,25 @@ class Customer extends Authenticatable
 
     public function updateBalances(): void
     {
-        // Only count invoices that are not 'paid' and not 'pending'
-        // 'pending' invoices don't affect balance until payment is made
-        $this->current_balance = $this->invoices()
+        // Calculate current balance from:
+        // 1. Invoices that are not 'paid' and not 'pending' (unpaid invoices)
+        // 2. Invoices that are 'paid' but credit is not fully repaid (credit_repaid_status != 'fully_paid')
+        //    - These represent credit used to pay businesses that customer still owes back
+        
+        $unpaidInvoices = $this->invoices()
             ->where('status', '!=', 'paid')
             ->where('status', '!=', 'pending')
             ->sum('remaining_balance');
         
+        $creditNotRepaid = $this->invoices()
+            ->where('status', 'paid')
+            ->where(function ($query) {
+                $query->whereNull('credit_repaid_status')
+                      ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+            })
+            ->sum('remaining_balance');
+        
+        $this->current_balance = $unpaidInvoices + $creditNotRepaid;
         $this->available_balance = max(0, $this->credit_limit - $this->current_balance);
         $this->save();
     }

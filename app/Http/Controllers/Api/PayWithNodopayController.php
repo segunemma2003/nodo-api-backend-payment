@@ -134,18 +134,25 @@ class PayWithNodopayController extends Controller
 
             // Update invoice status and calculate interest if needed
             // This will set the correct status (pending/in_grace/overdue) and calculate interest
+            // Interest (3.5% base) is always added, and remaining_balance includes it
             $this->interestService->updateInvoiceStatus($invoice);
             $invoice->refresh();
 
             // Ensure invoice status is 'in_grace' (not 'pending') so it affects credit limit
-            // Credit purchases should immediately reduce available credit
+            // Credit purchases should immediately reduce available credit by the full amount (principal + interest)
             if ($invoice->status === 'pending') {
                 $invoice->status = 'in_grace';
+                // Recalculate remaining_balance to ensure it includes interest
+                $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
                 $invoice->save();
             }
 
+            // Refresh invoice to ensure we have the latest remaining_balance
+            $invoice->refresh();
+
             // Update customer balances to deduct from credit limit
-            // This will reduce available_balance by the invoice's remaining_balance (which includes interest)
+            // This will reduce available_balance by the invoice's remaining_balance (principal + interest)
+            // The credit limit represents loaned money, so when used, it must be deducted
             $customer->updateBalances();
 
             // Process payout to business since customer is using credit to make purchase

@@ -197,26 +197,32 @@ class PaymentService
                 'paid_at' => now(),
             ]);
 
-            // Apply payment to the specific invoice
-            $invoice->paid_amount += $amount;
-            $invoice->remaining_balance -= $amount;
+            // When invoice is paid via checkout, customer is using credit to pay the business
+            // Business receives only principal_amount (interest belongs to admin/platform)
+            // Customer still owes the credit back (principal + interest)
+            
+            // Calculate total amount owed (principal + interest) if not already calculated
+            if ($invoice->total_amount <= $invoice->principal_amount) {
+                // Interest should have been calculated by updateInvoiceStatus above
+                // But if not, ensure total_amount includes interest
+                $invoice->total_amount = $invoice->principal_amount + $invoice->interest_amount;
+            }
 
-            // When invoice is paid via checkout, it means business was paid using credit
-            // Customer now owes this credit back - track credit repayment separately
-            if ($invoice->remaining_balance <= 0) {
-                $invoice->status = 'paid';
-                $invoice->remaining_balance = 0;
-                // Credit repayment status remains 'pending' until customer repays the credit
-                if ($invoice->credit_repaid_status === null) {
-                    $invoice->credit_repaid_status = 'pending';
-                    $invoice->credit_repaid_amount = 0;
-                }
-            } else {
-                // If invoice was pending, change status to 'in_grace' so it affects balance
-                // This also ensures business can see the payment (business balance increases)
-                if ($invoice->status === 'pending') {
-                    $invoice->status = 'in_grace';
-                }
+            // Business is paid only the principal amount (interest goes to admin)
+            $invoice->paid_amount = $invoice->principal_amount;
+            
+            // Customer still owes the credit back (principal + interest)
+            // remaining_balance = total_amount ensures credit is deducted
+            $invoice->remaining_balance = $invoice->total_amount;
+
+            // Invoice status = 'paid' so business knows they received payment
+            $invoice->status = 'paid';
+
+            // Set credit repayment status - customer owes this credit back
+            // This tracks if the customer has repaid the credit they used
+            if ($invoice->credit_repaid_status === null) {
+                $invoice->credit_repaid_status = 'pending';
+                $invoice->credit_repaid_amount = 0;
             }
 
             $invoice->save();
@@ -224,8 +230,8 @@ class PaymentService
             // Load supplier to ensure relationship is available
             $invoice->load('supplier');
 
-            // Update customer balances (this deducts from customer's current_balance)
-            // When payment is made, customer's current_balance decreases and available_balance increases
+            // Update customer balances - credit is deducted because invoice is 'in_grace' or 'overdue'
+            // The invoice's remaining_balance (which includes interest) reduces available_balance
             $customer->updateBalances();
 
             // Create transaction record
@@ -239,8 +245,9 @@ class PaymentService
                 'processed_at' => now(),
             ]);
 
-            // Process payout to business if invoice is fully paid and payout hasn't been processed yet
-            if ($invoice->status === 'paid' && $invoice->supplier_id && !$invoice->payouts()->exists()) {
+            // Process payout to business - business should receive payment when customer uses credit
+            // Payout is based on principal_amount (not total_amount with interest)
+            if ($invoice->supplier_id && !$invoice->payouts()->exists()) {
                 $this->processPayout($invoice);
             }
 
