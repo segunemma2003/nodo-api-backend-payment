@@ -12,6 +12,8 @@ class InterestService
 
     /**
      * Calculate interest for an invoice
+     * Interest (3.5% monthly) starts immediately after due date
+     * Grace period is for additional penalties, not to avoid interest
      */
     public function calculateInterest(Invoice $invoice): float
     {
@@ -20,22 +22,21 @@ class InterestService
         }
 
         $now = Carbon::now();
-        $gracePeriodEnd = $invoice->grace_period_end_date 
-            ? Carbon::parse($invoice->grace_period_end_date)
-            : (Carbon::parse($invoice->due_date)->addDays(self::GRACE_PERIOD_DAYS));
+        $dueDate = Carbon::parse($invoice->due_date);
 
-        // No interest during grace period
-        if ($now->lte($gracePeriodEnd)) {
+        // No interest before due date
+        if ($now->lte($dueDate)) {
             return 0;
         }
 
-        // Calculate months overdue after grace period
-        $monthsOverdue = $now->diffInMonths($gracePeriodEnd);
+        // Calculate months overdue from due date (not grace period end)
+        $monthsOverdue = $now->diffInMonths($dueDate);
         if ($monthsOverdue < 1) {
-            $monthsOverdue = 1; // Minimum 1 month
+            $monthsOverdue = 1; // Minimum 1 month if overdue by any amount
         }
 
         // Calculate interest on remaining balance
+        // Interest starts immediately after due date at 3.5% per month
         $interest = $invoice->remaining_balance * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
 
         return round($interest, 2);
@@ -66,12 +67,27 @@ class InterestService
         if ($now->lt($dueDate)) {
             $invoice->status = 'pending';
         } elseif ($now->gte($dueDate) && $now->lte($gracePeriodEnd)) {
+            // In grace period - interest starts immediately after due date
             $invoice->status = 'in_grace';
-        } else {
-            $invoice->status = 'overdue';
-            $invoice->months_overdue = $now->diffInMonths($gracePeriodEnd);
+            $invoice->months_overdue = $now->diffInMonths($dueDate);
+            if ($invoice->months_overdue < 1) {
+                $invoice->months_overdue = 1;
+            }
             
-            // Calculate and update interest
+            // Calculate and update interest (starts immediately after due date)
+            $interest = $this->calculateInterest($invoice);
+            $invoice->interest_amount = $interest;
+            $invoice->total_amount = $invoice->principal_amount + $interest;
+            $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
+        } else {
+            // After grace period - overdue with interest + additional penalties can apply
+            $invoice->status = 'overdue';
+            $invoice->months_overdue = $now->diffInMonths($dueDate);
+            if ($invoice->months_overdue < 1) {
+                $invoice->months_overdue = 1;
+            }
+            
+            // Calculate and update interest (continues from due date)
             $interest = $this->calculateInterest($invoice);
             $invoice->interest_amount = $interest;
             $invoice->total_amount = $invoice->principal_amount + $interest;
