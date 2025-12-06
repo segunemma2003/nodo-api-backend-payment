@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\UploadFileToS3Job;
 use App\Models\Business;
 use App\Models\BusinessCustomer;
+use App\Models\CreditLimitAdjustment;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\Payout;
+use App\Models\Transaction;
 use App\Models\Withdrawal;
 use App\Notifications\BusinessApprovedNotification;
 use App\Notifications\BusinessCreatedNotification;
@@ -132,15 +136,72 @@ class AdminController extends Controller
     {
         $request->validate([
             'credit_limit' => 'required|numeric|min:0',
+            'reason' => 'nullable|string',
         ]);
 
         $customer = Customer::findOrFail($id);
+        $previousCreditLimit = $customer->credit_limit;
         $customer->credit_limit = $request->credit_limit;
         $customer->updateBalances();
+
+        // Track credit limit adjustment
+        $adjustmentAmount = $request->credit_limit - $previousCreditLimit;
+        if ($adjustmentAmount != 0) {
+            \App\Models\CreditLimitAdjustment::create([
+                'customer_id' => $customer->id,
+                'previous_credit_limit' => $previousCreditLimit,
+                'new_credit_limit' => $request->credit_limit,
+                'adjustment_amount' => $adjustmentAmount,
+                'reason' => $request->reason ?? 'Credit limit adjustment',
+                'admin_user_id' => $request->user()?->id, // Admin who made the change
+            ]);
+        }
 
         return response()->json([
             'message' => 'Credit limit updated successfully',
             'customer' => $customer,
+        ]);
+    }
+
+    /**
+     * Add credits to customer wallet (increase credit limit)
+     */
+    public function addCreditsToCustomer(Request $request, $id)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'reason' => 'nullable|string',
+        ]);
+
+        $customer = Customer::findOrFail($id);
+        $previousCreditLimit = $customer->credit_limit;
+        $newCreditLimit = $previousCreditLimit + $request->amount;
+        
+        $customer->credit_limit = $newCreditLimit;
+        $customer->updateBalances();
+
+        // Track credit limit adjustment
+        CreditLimitAdjustment::create([
+            'customer_id' => $customer->id,
+            'previous_credit_limit' => $previousCreditLimit,
+            'new_credit_limit' => $newCreditLimit,
+            'adjustment_amount' => $request->amount, // Positive amount (addition)
+            'reason' => $request->reason ?? "Credit added to wallet: {$request->amount}",
+            'admin_user_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Credits added to customer wallet successfully',
+            'customer' => [
+                'id' => $customer->id,
+                'business_name' => $customer->business_name,
+                'account_number' => $customer->account_number,
+                'previous_credit_limit' => $previousCreditLimit,
+                'new_credit_limit' => $newCreditLimit,
+                'amount_added' => $request->amount,
+                'available_balance' => $customer->available_balance,
+            ],
         ]);
     }
 
@@ -192,11 +253,24 @@ class AdminController extends Controller
             $customer->status = 'active';
             
             // Set credit limit if provided, otherwise calculate it
+            $previousCreditLimit = $customer->credit_limit;
             if ($request->has('credit_limit')) {
                 $customer->credit_limit = $request->credit_limit;
             } else {
                 // Calculate credit limit: minimum_purchase_amount × (payment_plan_duration + 1)
                 $this->creditLimitService->updateCustomerCreditLimit($customer);
+            }
+            
+            // Track credit limit adjustment on approval
+            if ($previousCreditLimit != $customer->credit_limit) {
+                CreditLimitAdjustment::create([
+                    'customer_id' => $customer->id,
+                    'previous_credit_limit' => $previousCreditLimit,
+                    'new_credit_limit' => $customer->credit_limit,
+                    'adjustment_amount' => $customer->credit_limit - $previousCreditLimit,
+                    'reason' => 'Credit limit set on account approval',
+                    'admin_user_id' => $request->user()?->id,
+                ]);
             }
 
             // Send notification to customer about approval
@@ -706,6 +780,260 @@ class AdminController extends Controller
 
         return response()->json([
             'business_customer' => $businessCustomer,
+        ]);
+    }
+
+    /**
+     * Get all transactions (unified view of all transaction types)
+     * Includes: Transactions, Payments, Withdrawals, Credit Limit Adjustments, Payouts
+     */
+    public function getAllTransactions(Request $request)
+    {
+        $perPage = $request->get('per_page', 50);
+        $type = $request->get('type'); // Filter by type: transaction, payment, withdrawal, credit_adjustment, payout
+        $customerId = $request->get('customer_id');
+        $businessId = $request->get('business_id');
+        $dateFrom = $request->get('date_from');
+        $dateTo = $request->get('date_to');
+
+        $transactions = collect();
+
+        // 1. Get all Transactions (credit_purchase, repayment, payout, refund)
+        if (!$type || $type === 'transaction') {
+            $txns = Transaction::with(['customer', 'business', 'invoice'])
+                ->when($customerId, function ($q) use ($customerId) {
+                    $q->where('customer_id', $customerId);
+                })
+                ->when($businessId, function ($q) use ($businessId) {
+                    $q->where('business_id', $businessId);
+                })
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($txn) {
+                    return [
+                        'id' => $txn->id,
+                        'reference' => $txn->transaction_reference,
+                        'type' => 'transaction',
+                        'transaction_type' => $txn->type, // credit_purchase, repayment, payout, refund
+                        'amount' => $txn->amount,
+                        'status' => $txn->status,
+                        'description' => $txn->description,
+                        'customer' => $txn->customer ? [
+                            'id' => $txn->customer->id,
+                            'business_name' => $txn->customer->business_name,
+                            'account_number' => $txn->customer->account_number,
+                        ] : null,
+                        'business' => $txn->business ? [
+                            'id' => $txn->business->id,
+                            'business_name' => $txn->business->business_name,
+                        ] : null,
+                        'invoice' => $txn->invoice ? [
+                            'id' => $txn->invoice->id,
+                            'invoice_id' => $txn->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => $txn->metadata,
+                        'processed_at' => $txn->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $txn->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $transactions = $transactions->merge($txns);
+        }
+
+        // 2. Get all Payments (customer repayments)
+        if (!$type || $type === 'payment') {
+            $payments = Payment::with(['customer', 'invoice'])
+                ->when($customerId, function ($q) use ($customerId) {
+                    $q->where('customer_id', $customerId);
+                })
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($payment) {
+                    return [
+                        'id' => $payment->id,
+                        'reference' => $payment->payment_reference,
+                        'type' => 'payment',
+                        'transaction_type' => 'repayment',
+                        'amount' => $payment->amount,
+                        'status' => $payment->status,
+                        'description' => "Payment: {$payment->payment_reference}",
+                        'customer' => $payment->customer ? [
+                            'id' => $payment->customer->id,
+                            'business_name' => $payment->customer->business_name,
+                            'account_number' => $payment->customer->account_number,
+                        ] : null,
+                        'business' => null,
+                        'invoice' => $payment->invoice ? [
+                            'id' => $payment->invoice->id,
+                            'invoice_id' => $payment->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => null,
+                        'processed_at' => $payment->paid_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $payment->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $transactions = $transactions->merge($payments);
+        }
+
+        // 3. Get all Withdrawals (business withdrawals)
+        if (!$type || $type === 'withdrawal') {
+            $withdrawals = Withdrawal::with(['business'])
+                ->when($businessId, function ($q) use ($businessId) {
+                    $q->where('business_id', $businessId);
+                })
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($withdrawal) {
+                    return [
+                        'id' => $withdrawal->id,
+                        'reference' => $withdrawal->withdrawal_reference,
+                        'type' => 'withdrawal',
+                        'transaction_type' => 'withdrawal',
+                        'amount' => $withdrawal->amount,
+                        'status' => $withdrawal->status,
+                        'description' => "Withdrawal: {$withdrawal->withdrawal_reference}",
+                        'customer' => null,
+                        'business' => $withdrawal->business ? [
+                            'id' => $withdrawal->business->id,
+                            'business_name' => $withdrawal->business->business_name,
+                        ] : null,
+                        'invoice' => null,
+                        'metadata' => [
+                            'bank_name' => $withdrawal->bank_name,
+                            'account_number' => $withdrawal->account_number,
+                            'account_name' => $withdrawal->account_name,
+                        ],
+                        'processed_at' => $withdrawal->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $withdrawal->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $transactions = $transactions->merge($withdrawals);
+        }
+
+        // 4. Get all Credit Limit Adjustments (admin credit limit changes)
+        if (!$type || $type === 'credit_adjustment') {
+            $adjustments = CreditLimitAdjustment::with(['customer', 'adminUser'])
+                ->when($customerId, function ($q) use ($customerId) {
+                    $q->where('customer_id', $customerId);
+                })
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($adjustment) {
+                    return [
+                        'id' => $adjustment->id,
+                        'reference' => 'CLA-' . str_pad($adjustment->id, 8, '0', STR_PAD_LEFT),
+                        'type' => 'credit_adjustment',
+                        'transaction_type' => 'credit_limit_adjustment',
+                        'amount' => abs($adjustment->adjustment_amount), // Absolute value for display
+                        'adjustment_amount' => $adjustment->adjustment_amount, // Can be positive or negative
+                        'status' => 'completed',
+                        'description' => $adjustment->reason ?? 'Credit limit adjustment',
+                        'customer' => $adjustment->customer ? [
+                            'id' => $adjustment->customer->id,
+                            'business_name' => $adjustment->customer->business_name,
+                            'account_number' => $adjustment->customer->account_number,
+                        ] : null,
+                        'business' => null,
+                        'invoice' => null,
+                        'metadata' => [
+                            'previous_credit_limit' => $adjustment->previous_credit_limit,
+                            'new_credit_limit' => $adjustment->new_credit_limit,
+                            'admin_user_id' => $adjustment->admin_user_id,
+                        ],
+                        'processed_at' => $adjustment->created_at->format('Y-m-d H:i:s'),
+                        'created_at' => $adjustment->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $transactions = $transactions->merge($adjustments);
+        }
+
+        // 5. Get all Payouts (business payouts from invoices)
+        if (!$type || $type === 'payout') {
+            $payouts = Payout::with(['invoice.customer', 'invoice.supplier'])
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($payout) {
+                    return [
+                        'id' => $payout->id,
+                        'reference' => $payout->payout_reference,
+                        'type' => 'payout',
+                        'transaction_type' => 'payout',
+                        'amount' => $payout->amount,
+                        'status' => $payout->status,
+                        'description' => "Payout: {$payout->payout_reference}",
+                        'customer' => $payout->invoice && $payout->invoice->customer ? [
+                            'id' => $payout->invoice->customer->id,
+                            'business_name' => $payout->invoice->customer->business_name,
+                            'account_number' => $payout->invoice->customer->account_number,
+                        ] : null,
+                        'business' => $payout->invoice && $payout->invoice->supplier ? [
+                            'id' => $payout->invoice->supplier->id,
+                            'business_name' => $payout->invoice->supplier->business_name,
+                        ] : null,
+                        'invoice' => $payout->invoice ? [
+                            'id' => $payout->invoice->id,
+                            'invoice_id' => $payout->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => [
+                            'supplier_name' => $payout->supplier_name,
+                        ],
+                        'processed_at' => $payout->paid_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $payout->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $transactions = $transactions->merge($payouts);
+        }
+
+        // Sort all transactions by created_at (most recent first)
+        $transactions = $transactions->sortByDesc('created_at')->values();
+
+        // Paginate manually
+        $currentPage = $request->get('page', 1);
+        $total = $transactions->count();
+        $perPage = (int) $perPage;
+        $offset = ($currentPage - 1) * $perPage;
+        $items = $transactions->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'transactions' => $items,
+            'pagination' => [
+                'current_page' => (int) $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil($total / $perPage),
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total),
+            ],
         ]);
     }
 }

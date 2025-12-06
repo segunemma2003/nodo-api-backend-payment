@@ -38,8 +38,18 @@ class PaymentService
                 'paid_at' => now(),
             ]);
 
+            // Get invoices that are either unpaid OR paid but credit not fully repaid
             $invoices = $customer->invoices()
-                ->where('status', '!=', 'paid')
+                ->where(function ($query) {
+                    $query->where('status', '!=', 'paid')
+                        ->orWhere(function ($q) {
+                            $q->where('status', 'paid')
+                              ->where(function ($subQ) {
+                                  $subQ->whereNull('credit_repaid_status')
+                                       ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+                              });
+                        });
+                })
                 ->orderByRaw('due_date IS NULL, due_date ASC')
                 ->get();
 
@@ -50,20 +60,44 @@ class PaymentService
                     break;
                 }
 
-                $paymentAmount = min($remainingAmount, $invoice->remaining_balance);
-                
-                $invoice->paid_amount += $paymentAmount;
-                $invoice->remaining_balance -= $paymentAmount;
+                // Check if this is a repayment of credit (invoice already paid to business)
+                if ($invoice->status === 'paid') {
+                    // This payment is repaying the credit used for this invoice
+                    $remainingCreditToRepay = $invoice->total_amount - ($invoice->credit_repaid_amount ?? 0);
+                    $paymentAmount = min($remainingAmount, $remainingCreditToRepay);
+                    
+                    $invoice->credit_repaid_amount = ($invoice->credit_repaid_amount ?? 0) + $paymentAmount;
+                    
+                    if ($invoice->credit_repaid_amount >= $invoice->total_amount) {
+                        $invoice->credit_repaid_status = 'fully_paid';
+                        $invoice->credit_repaid_at = now();
+                        $invoice->credit_repaid_amount = $invoice->total_amount; // Cap at total amount
+                    } elseif ($invoice->credit_repaid_amount > 0) {
+                        $invoice->credit_repaid_status = 'partially_paid';
+                    } else {
+                        $invoice->credit_repaid_status = 'pending';
+                    }
+                } else {
+                    // Invoice is being paid for the first time
+                    $paymentAmount = min($remainingAmount, $invoice->remaining_balance);
+                    $invoice->paid_amount += $paymentAmount;
+                    $invoice->remaining_balance -= $paymentAmount;
 
-                if ($invoice->remaining_balance <= 0) {
-                    $invoice->status = 'paid';
-                    $invoice->remaining_balance = 0;
+                    if ($invoice->remaining_balance <= 0) {
+                        $invoice->status = 'paid';
+                        $invoice->remaining_balance = 0;
+                        // Credit repayment status remains 'pending' until customer repays the credit
+                        if ($invoice->credit_repaid_status === null) {
+                            $invoice->credit_repaid_status = 'pending';
+                            $invoice->credit_repaid_amount = 0;
+                        }
+                    }
                 }
 
                 $invoice->save();
                 $payment->invoice_id = $invoice->id;
                 $payment->save();
-
+                
                 $remainingAmount -= $paymentAmount;
             }
 
@@ -144,6 +178,16 @@ class PaymentService
         DB::beginTransaction();
 
         try {
+            // Calculate and apply interest BEFORE payment (if invoice is overdue)
+            // This ensures interest is included in the amount owed
+            if ($invoice->due_date && $invoice->status !== 'paid') {
+                $this->interestService->updateInvoiceStatus($invoice);
+                $invoice->refresh(); // Refresh to get updated interest_amount and total_amount
+                
+                // Recalculate remaining balance with interest
+                $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
+            }
+
             $payment = Payment::create([
                 'customer_id' => $customer->id,
                 'invoice_id' => $invoice->id,
@@ -157,11 +201,19 @@ class PaymentService
             $invoice->paid_amount += $amount;
             $invoice->remaining_balance -= $amount;
 
+            // When invoice is paid via checkout, it means business was paid using credit
+            // Customer now owes this credit back - track credit repayment separately
             if ($invoice->remaining_balance <= 0) {
                 $invoice->status = 'paid';
                 $invoice->remaining_balance = 0;
+                // Credit repayment status remains 'pending' until customer repays the credit
+                if ($invoice->credit_repaid_status === null) {
+                    $invoice->credit_repaid_status = 'pending';
+                    $invoice->credit_repaid_amount = 0;
+                }
             } else {
                 // If invoice was pending, change status to 'in_grace' so it affects balance
+                // This also ensures business can see the payment (business balance increases)
                 if ($invoice->status === 'pending') {
                     $invoice->status = 'in_grace';
                 }
@@ -169,7 +221,11 @@ class PaymentService
 
             $invoice->save();
 
-            // Update customer balances (deduct payment from balance)
+            // Load supplier to ensure relationship is available
+            $invoice->load('supplier');
+
+            // Update customer balances (this deducts from customer's current_balance)
+            // When payment is made, customer's current_balance decreases and available_balance increases
             $customer->updateBalances();
 
             // Create transaction record

@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CreditLimitAdjustment;
 use App\Models\Customer;
+use App\Models\Payment;
+use App\Models\Transaction;
 use App\Services\InterestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -131,13 +134,140 @@ class CustomerDashboardController extends Controller
     public function getTransactions(Request $request)
     {
         $customer = $this->getCustomer($request);
+        $type = $request->get('type'); // Filter by type: transaction, payment, credit_adjustment
+        $dateFrom = $request->get('date_from');
+        $dateTo = $request->get('date_to');
+        $perPage = $request->get('per_page', 20);
 
-        $transactions = $customer->transactions()
+        $allTransactions = collect();
+
+        // 1. Get all Transactions (credit_purchase, repayment, etc.)
+        if (!$type || $type === 'transaction') {
+            $txns = Transaction::where('customer_id', $customer->id)
             ->with(['business', 'invoice'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($txn) {
+                    return [
+                        'id' => $txn->id,
+                        'reference' => $txn->transaction_reference,
+                        'type' => 'transaction',
+                        'transaction_type' => $txn->type,
+                        'amount' => $txn->amount,
+                        'status' => $txn->status,
+                        'description' => $txn->description,
+                        'business' => $txn->business ? [
+                            'id' => $txn->business->id,
+                            'business_name' => $txn->business->business_name,
+                        ] : null,
+                        'invoice' => $txn->invoice ? [
+                            'id' => $txn->invoice->id,
+                            'invoice_id' => $txn->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => $txn->metadata,
+                        'processed_at' => $txn->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $txn->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
 
-        return response()->json($transactions);
+            $allTransactions = $allTransactions->merge($txns);
+        }
+
+        // 2. Get all Payments (repayments)
+        if (!$type || $type === 'payment') {
+            $payments = Payment::where('customer_id', $customer->id)
+                ->with(['invoice'])
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($payment) {
+                    return [
+                        'id' => $payment->id,
+                        'reference' => $payment->payment_reference,
+                        'type' => 'payment',
+                        'transaction_type' => 'repayment',
+                        'amount' => $payment->amount,
+                        'status' => $payment->status,
+                        'description' => "Payment: {$payment->payment_reference}",
+                        'business' => null,
+                        'invoice' => $payment->invoice ? [
+                            'id' => $payment->invoice->id,
+                            'invoice_id' => $payment->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => null,
+                        'processed_at' => $payment->paid_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $payment->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $allTransactions = $allTransactions->merge($payments);
+        }
+
+        // 3. Get all Credit Limit Adjustments (admin credit additions/changes)
+        if (!$type || $type === 'credit_adjustment') {
+            $adjustments = CreditLimitAdjustment::where('customer_id', $customer->id)
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($adjustment) {
+                    return [
+                        'id' => $adjustment->id,
+                        'reference' => 'CLA-' . str_pad($adjustment->id, 8, '0', STR_PAD_LEFT),
+                        'type' => 'credit_adjustment',
+                        'transaction_type' => 'credit_limit_adjustment',
+                        'amount' => abs($adjustment->adjustment_amount),
+                        'adjustment_amount' => $adjustment->adjustment_amount, // Can be positive or negative
+                        'status' => 'completed',
+                        'description' => $adjustment->reason ?? 'Credit limit adjustment',
+                        'business' => null,
+                        'invoice' => null,
+                        'metadata' => [
+                            'previous_credit_limit' => $adjustment->previous_credit_limit,
+                            'new_credit_limit' => $adjustment->new_credit_limit,
+                        ],
+                        'processed_at' => $adjustment->created_at->format('Y-m-d H:i:s'),
+                        'created_at' => $adjustment->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $allTransactions = $allTransactions->merge($adjustments);
+        }
+
+        // Sort all transactions by created_at (most recent first)
+        $allTransactions = $allTransactions->sortByDesc('created_at')->values();
+
+        // Paginate manually
+        $currentPage = $request->get('page', 1);
+        $total = $allTransactions->count();
+        $perPage = (int) $perPage;
+        $offset = ($currentPage - 1) * $perPage;
+        $items = $allTransactions->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'transactions' => $items,
+            'pagination' => [
+                'current_page' => (int) $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil($total / $perPage),
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total),
+            ],
+        ]);
     }
 
     /**

@@ -29,6 +29,9 @@ class Invoice extends Model
         'due_date',
         'grace_period_end_date',
         'status',
+        'credit_repaid_status', // Tracks if credit used for this invoice has been repaid
+        'credit_repaid_amount', // Amount of credit that has been repaid
+        'credit_repaid_at', // Timestamp when credit was fully repaid
         'months_overdue',
         'notes',
     ];
@@ -39,9 +42,11 @@ class Invoice extends Model
         'total_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'remaining_balance' => 'decimal:2',
+        'credit_repaid_amount' => 'decimal:2',
         'purchase_date' => 'date',
         'due_date' => 'date',
         'grace_period_end_date' => 'date',
+        'credit_repaid_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo

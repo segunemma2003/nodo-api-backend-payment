@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\BusinessCustomer;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Payout;
 use App\Models\Transaction;
 use App\Models\Withdrawal;
 use App\Services\InvoiceService;
@@ -189,11 +190,11 @@ class BusinessController extends Controller
         $mainCustomer = $businessCustomer->linkedCustomer;
         if ($mainCustomer) {
             if (!$this->invoiceService->hasAvailableCredit($mainCustomer, $request->amount)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Customer does not have sufficient credit',
+            return response()->json([
+                'success' => false,
+                'message' => 'Customer does not have sufficient credit',
                     'available_credit' => $mainCustomer->available_balance,
-                ], 400);
+            ], 400);
             }
         }
 
@@ -277,13 +278,149 @@ class BusinessController extends Controller
     public function getTransactions(Request $request)
     {
         $business = $this->getBusiness($request);
+        $type = $request->get('type'); // Filter by type: transaction, withdrawal, payout
+        $dateFrom = $request->get('date_from');
+        $dateTo = $request->get('date_to');
+        $perPage = $request->get('per_page', 20);
 
-        $transactions = $business->transactions()
+        $allTransactions = collect();
+
+        // 1. Get all Transactions (credit_purchase, etc.)
+        if (!$type || $type === 'transaction') {
+            $txns = Transaction::where('business_id', $business->id)
             ->with(['customer', 'invoice'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($txn) {
+                    return [
+                        'id' => $txn->id,
+                        'reference' => $txn->transaction_reference,
+                        'type' => 'transaction',
+                        'transaction_type' => $txn->type,
+                        'amount' => $txn->amount,
+                        'status' => $txn->status,
+                        'description' => $txn->description,
+                        'customer' => $txn->customer ? [
+                            'id' => $txn->customer->id,
+                            'business_name' => $txn->customer->business_name,
+                            'account_number' => $txn->customer->account_number,
+                        ] : null,
+                        'invoice' => $txn->invoice ? [
+                            'id' => $txn->invoice->id,
+                            'invoice_id' => $txn->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => $txn->metadata,
+                        'processed_at' => $txn->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $txn->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
 
-        return response()->json($transactions);
+            $allTransactions = $allTransactions->merge($txns);
+        }
+
+        // 2. Get all Withdrawals
+        if (!$type || $type === 'withdrawal') {
+            $withdrawals = Withdrawal::where('business_id', $business->id)
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($withdrawal) {
+                    return [
+                        'id' => $withdrawal->id,
+                        'reference' => $withdrawal->withdrawal_reference,
+                        'type' => 'withdrawal',
+                        'transaction_type' => 'withdrawal',
+                        'amount' => $withdrawal->amount,
+                        'status' => $withdrawal->status,
+                        'description' => "Withdrawal: {$withdrawal->withdrawal_reference}",
+                        'customer' => null,
+                        'invoice' => null,
+                        'metadata' => [
+                            'bank_name' => $withdrawal->bank_name,
+                            'account_number' => $withdrawal->account_number,
+                            'account_name' => $withdrawal->account_name,
+                        ],
+                        'processed_at' => $withdrawal->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $withdrawal->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $allTransactions = $allTransactions->merge($withdrawals);
+        }
+
+        // 3. Get all Payouts (from invoices)
+        if (!$type || $type === 'payout') {
+            $payouts = Payout::whereHas('invoice', function ($q) use ($business) {
+                    $q->where('supplier_id', $business->id);
+                })
+                ->with(['invoice.customer'])
+                ->when($dateFrom, function ($q) use ($dateFrom) {
+                    $q->whereDate('created_at', '>=', $dateFrom);
+                })
+                ->when($dateTo, function ($q) use ($dateTo) {
+                    $q->whereDate('created_at', '<=', $dateTo);
+                })
+                ->get()
+                ->map(function ($payout) {
+                    return [
+                        'id' => $payout->id,
+                        'reference' => $payout->payout_reference,
+                        'type' => 'payout',
+                        'transaction_type' => 'payout',
+                        'amount' => $payout->amount,
+                        'status' => $payout->status,
+                        'description' => "Payout: {$payout->payout_reference}",
+                        'customer' => $payout->invoice && $payout->invoice->customer ? [
+                            'id' => $payout->invoice->customer->id,
+                            'business_name' => $payout->invoice->customer->business_name,
+                            'account_number' => $payout->invoice->customer->account_number,
+                        ] : null,
+                        'invoice' => $payout->invoice ? [
+                            'id' => $payout->invoice->id,
+                            'invoice_id' => $payout->invoice->invoice_id,
+                        ] : null,
+                        'metadata' => [
+                            'supplier_name' => $payout->supplier_name,
+                        ],
+                        'processed_at' => $payout->paid_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $payout->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            $allTransactions = $allTransactions->merge($payouts);
+        }
+
+        // Sort all transactions by created_at (most recent first)
+        $allTransactions = $allTransactions->sortByDesc('created_at')->values();
+
+        // Paginate manually
+        $currentPage = $request->get('page', 1);
+        $total = $allTransactions->count();
+        $perPage = (int) $perPage;
+        $offset = ($currentPage - 1) * $perPage;
+        $items = $allTransactions->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'transactions' => $items,
+            'pagination' => [
+                'current_page' => (int) $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil($total / $perPage),
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total),
+            ],
+        ]);
     }
 
     public function requestWithdrawal(Request $request)

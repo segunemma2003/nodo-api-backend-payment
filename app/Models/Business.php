@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Business extends Authenticatable
 {
@@ -60,9 +61,11 @@ class Business extends Authenticatable
 
     public function getAvailableBalance(): float
     {
+        // Calculate total revenue from invoices (including interest)
+        // Only count invoices that are not pending (i.e., paid or have payments)
         $totalRevenue = $this->invoices()
             ->where('status', '!=', 'pending')
-            ->sum('principal_amount');
+            ->sum(\DB::raw('COALESCE(paid_amount, 0)'));
         
         $totalWithdrawn = $this->withdrawals()
             ->whereIn('status', ['approved', 'processed'])

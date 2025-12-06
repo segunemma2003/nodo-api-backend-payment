@@ -6,16 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Customer;
 use App\Services\PaymentService;
+use App\Services\InterestService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class InvoiceCheckoutController extends Controller
 {
     protected PaymentService $paymentService;
+    protected InterestService $interestService;
 
-    public function __construct(PaymentService $paymentService)
+    public function __construct(PaymentService $paymentService, InterestService $interestService)
     {
         $this->paymentService = $paymentService;
+        $this->interestService = $interestService;
     }
 
     /**
@@ -124,6 +127,15 @@ class InvoiceCheckoutController extends Controller
             ], 400);
         }
 
+        // Calculate interest BEFORE getting payment amount to ensure it's included
+        if ($invoice->due_date && $invoice->status !== 'paid') {
+            $this->interestService->updateInvoiceStatus($invoice);
+            $invoice->refresh();
+        }
+
+        // Load supplier relationship to ensure it's available
+        $invoice->load('supplier');
+
         $paymentAmount = $invoice->remaining_balance;
 
         // Link business customer to main customer if invoice was from business customer
@@ -136,6 +148,9 @@ class InvoiceCheckoutController extends Controller
             $invoice->customer_id = $customer->id;
             $invoice->save();
         }
+
+        // Load supplier relationship before processing payment
+        $invoice->load('supplier');
 
         // Process payment for this specific invoice
         // Invoice is now linked to customer, so it will appear in customer's invoice list

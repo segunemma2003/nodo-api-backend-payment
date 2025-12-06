@@ -75,6 +75,7 @@ Route::prefix('admin')->group(function () {
     Route::get('/customers/{id}', [AdminController::class, 'getCustomer']);
     Route::put('/customers/{id}', [AdminController::class, 'updateCustomer']);
     Route::patch('/customers/{id}/credit-limit', [AdminController::class, 'updateCreditLimit']);
+    Route::post('/customers/{id}/add-credits', [AdminController::class, 'addCreditsToCustomer']);
     Route::patch('/customers/{id}/status', [AdminController::class, 'updateCustomerStatus']);
     Route::patch('/customers/{id}/approval', [AdminController::class, 'updateCustomerApproval']);
     
@@ -102,6 +103,9 @@ Route::prefix('admin')->group(function () {
     Route::get('/withdrawals', [AdminController::class, 'getAllWithdrawals']);
     Route::patch('/withdrawals/{id}/approve', [AdminController::class, 'approveWithdrawal']);
     Route::patch('/withdrawals/{id}/process', [AdminController::class, 'processWithdrawal']);
+    
+    // Unified Transactions (All transaction types)
+    Route::get('/transactions/all', [AdminController::class, 'getAllTransactions']);
 });
 
 // Pay with Nodopay API (External Integration)
