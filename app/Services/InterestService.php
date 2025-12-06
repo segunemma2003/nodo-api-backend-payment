@@ -12,8 +12,9 @@ class InterestService
 
     /**
      * Calculate interest for an invoice
-     * Interest (3.5% monthly) starts immediately after due date
-     * Grace period is for additional penalties, not to avoid interest
+     * Initial 3.5% interest is always added when invoice is created
+     * Additional 3.5% interest is added if grace period is exceeded
+     * Total: 3.5% (within grace period) or 7% (after grace period)
      */
     public function calculateInterest(Invoice $invoice): float
     {
@@ -23,23 +24,22 @@ class InterestService
 
         $now = Carbon::now();
         $dueDate = Carbon::parse($invoice->due_date);
+        $gracePeriodEnd = $invoice->grace_period_end_date 
+            ? Carbon::parse($invoice->grace_period_end_date)
+            : ($dueDate->copy()->addDays(self::GRACE_PERIOD_DAYS));
 
-        // No interest before due date
-        if ($now->lte($dueDate)) {
-            return 0;
+        // Base interest: 3.5% is always added (initial interest)
+        $baseInterest = $invoice->principal_amount * self::MONTHLY_INTEREST_RATE;
+        
+        // Additional interest: 3.5% if grace period is exceeded
+        $additionalInterest = 0;
+        if ($now->gt($gracePeriodEnd)) {
+            $additionalInterest = $invoice->principal_amount * self::MONTHLY_INTEREST_RATE;
         }
 
-        // Calculate months overdue from due date (not grace period end)
-        $monthsOverdue = $now->diffInMonths($dueDate);
-        if ($monthsOverdue < 1) {
-            $monthsOverdue = 1; // Minimum 1 month if overdue by any amount
-        }
+        $totalInterest = $baseInterest + $additionalInterest;
 
-        // Calculate interest on remaining balance
-        // Interest starts immediately after due date at 3.5% per month
-        $interest = $invoice->remaining_balance * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
-
-        return round($interest, 2);
+        return round($totalInterest, 2);
     }
 
     /**
@@ -64,34 +64,28 @@ class InterestService
             ? Carbon::parse($invoice->grace_period_end_date)
             : ($dueDate->copy()->addDays(self::GRACE_PERIOD_DAYS));
 
+        // Calculate interest (3.5% always, + 3.5% if grace period exceeded)
+        $interest = $this->calculateInterest($invoice);
+        $invoice->interest_amount = $interest;
+        $invoice->total_amount = $invoice->principal_amount + $interest;
+        $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
+
         if ($now->lt($dueDate)) {
             $invoice->status = 'pending';
         } elseif ($now->gte($dueDate) && $now->lte($gracePeriodEnd)) {
-            // In grace period - interest starts immediately after due date
+            // In grace period - base 3.5% interest applies
             $invoice->status = 'in_grace';
             $invoice->months_overdue = $now->diffInMonths($dueDate);
             if ($invoice->months_overdue < 1) {
                 $invoice->months_overdue = 1;
             }
-            
-            // Calculate and update interest (starts immediately after due date)
-            $interest = $this->calculateInterest($invoice);
-            $invoice->interest_amount = $interest;
-            $invoice->total_amount = $invoice->principal_amount + $interest;
-            $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
         } else {
-            // After grace period - overdue with interest + additional penalties can apply
+            // After grace period - overdue, additional 3.5% interest applies (total 7%)
             $invoice->status = 'overdue';
             $invoice->months_overdue = $now->diffInMonths($dueDate);
             if ($invoice->months_overdue < 1) {
                 $invoice->months_overdue = 1;
             }
-            
-            // Calculate and update interest (continues from due date)
-            $interest = $this->calculateInterest($invoice);
-            $invoice->interest_amount = $interest;
-            $invoice->total_amount = $invoice->principal_amount + $interest;
-            $invoice->remaining_balance = $invoice->total_amount - $invoice->paid_amount;
         }
 
         $invoice->save();

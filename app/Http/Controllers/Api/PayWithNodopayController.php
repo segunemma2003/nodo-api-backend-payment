@@ -8,6 +8,8 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Transaction;
 use App\Services\InvoiceService;
+use App\Services\InterestService;
+use App\Services\PaymentService;
 use App\Services\WebhookService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -16,11 +18,15 @@ use Illuminate\Support\Facades\Log;
 class PayWithNodopayController extends Controller
 {
     protected InvoiceService $invoiceService;
+    protected InterestService $interestService;
+    protected PaymentService $paymentService;
     protected WebhookService $webhookService;
 
-    public function __construct(InvoiceService $invoiceService, WebhookService $webhookService)
+    public function __construct(InvoiceService $invoiceService, InterestService $interestService, PaymentService $paymentService, WebhookService $webhookService)
     {
         $this->invoiceService = $invoiceService;
+        $this->interestService = $interestService;
+        $this->paymentService = $paymentService;
         $this->webhookService = $webhookService;
     }
 
@@ -107,14 +113,46 @@ class PayWithNodopayController extends Controller
                 ], 400);
             }
 
+            // Calculate purchase date
+            $purchaseDate = $request->purchase_date 
+                ? \Carbon\Carbon::parse($request->purchase_date) 
+                : \Carbon\Carbon::now();
+
+            // Calculate due_date based on customer's payment plan duration
+            // due_date = purchase_date + payment_plan_duration (in months)
+            $paymentPlanDuration = $customer->payment_plan_duration ?? 6; // Default to 6 months if not set
+            $dueDate = $purchaseDate->copy()->addMonths($paymentPlanDuration);
+
             $invoice = $this->invoiceService->createInvoice(
                 $customer,
                 $request->amount,
                 $business->business_name,
-                $request->purchase_date ? \Carbon\Carbon::parse($request->purchase_date) : null,
-                null,
+                $purchaseDate,
+                $dueDate,
                 $business->id
             );
+
+            // Update invoice status and calculate interest if needed
+            // This will set the correct status (pending/in_grace/overdue) and calculate interest
+            $this->interestService->updateInvoiceStatus($invoice);
+            $invoice->refresh();
+
+            // Ensure invoice status is 'in_grace' (not 'pending') so it affects credit limit
+            // Credit purchases should immediately reduce available credit
+            if ($invoice->status === 'pending') {
+                $invoice->status = 'in_grace';
+                $invoice->save();
+            }
+
+            // Update customer balances to deduct from credit limit
+            // This will reduce available_balance by the invoice's remaining_balance (which includes interest)
+            $customer->updateBalances();
+
+            // Process payout to business since customer is using credit to make purchase
+            // Business should receive payment immediately when credit is used
+            if ($invoice->supplier_id && !$invoice->payouts()->exists()) {
+                $this->paymentService->processPayout($invoice);
+            }
 
             Transaction::create([
                 'customer_id' => $customer->id,
@@ -141,7 +179,7 @@ class PayWithNodopayController extends Controller
                 'customer_id' => $customer->id,
                 'amount' => $invoice->principal_amount,
                 'status' => $invoice->status,
-                'due_date' => $invoice->due_date->format('Y-m-d'),
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                 'order_reference' => $request->order_reference,
                 'items' => $request->items,
             ]);
@@ -151,8 +189,11 @@ class PayWithNodopayController extends Controller
                 'message' => 'Purchase financed successfully',
                 'invoice' => [
                     'invoice_id' => $invoice->invoice_id,
-                    'amount' => $invoice->principal_amount,
+                    'principal_amount' => $invoice->principal_amount,
+                    'interest_amount' => $invoice->interest_amount,
+                    'total_amount' => $invoice->total_amount,
                     'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                    'grace_period_end_date' => $invoice->grace_period_end_date ? $invoice->grace_period_end_date->format('Y-m-d') : null,
                     'status' => $invoice->status,
                 ],
                 'order' => [
