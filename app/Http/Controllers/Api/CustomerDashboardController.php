@@ -47,20 +47,23 @@ class CustomerDashboardController extends Controller
     public function getInvoices(Request $request)
     {
         $customer = $this->getCustomer($request);
+        
+        // Clear cache to ensure latest data including credit repayment status
         $cacheKey = 'customer_invoices_' . $customer->id;
+        Cache::forget($cacheKey);
+        
+        $this->interestService->updateAllInvoices();
 
-        $invoices = Cache::remember($cacheKey, 120, function () use ($customer) {
-            $this->interestService->updateAllInvoices();
-
-            return $customer->invoices()
-                ->with('transactions')
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($invoice) {
+        $invoices = $customer->invoices()
+            ->with('transactions')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($invoice) {
                 return [
                     'invoice_id' => $invoice->invoice_id,
                     'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
                     'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                    'grace_period_end_date' => $invoice->grace_period_end_date ? $invoice->grace_period_end_date->format('Y-m-d') : null,
                     'status' => $invoice->status,
                     'principal_amount' => $invoice->principal_amount,
                     'interest_amount' => $invoice->interest_amount,
@@ -71,9 +74,11 @@ class CustomerDashboardController extends Controller
                     'months_overdue' => $invoice->months_overdue,
                     'description' => $invoice->getDescription(),
                     'items' => $invoice->getItems(),
+                    'credit_repaid_status' => $invoice->credit_repaid_status ?? 'pending',
+                    'credit_repaid_amount' => $invoice->credit_repaid_amount ?? '0.00',
+                    'credit_repaid_at' => $invoice->credit_repaid_at ? $invoice->credit_repaid_at->format('Y-m-d H:i:s') : null,
                 ];
             });
-        });
 
         return response()->json([
             'invoices' => $invoices,
@@ -111,6 +116,9 @@ class CustomerDashboardController extends Controller
                 'months_overdue' => $invoice->months_overdue,
                 'description' => $invoice->getDescription(),
                 'items' => $invoice->getItems(),
+                'credit_repaid_status' => $invoice->credit_repaid_status ?? 'pending',
+                'credit_repaid_amount' => $invoice->credit_repaid_amount ?? '0.00',
+                'credit_repaid_at' => $invoice->credit_repaid_at ? $invoice->credit_repaid_at->format('Y-m-d H:i:s') : null,
             ],
         ]);
     }
