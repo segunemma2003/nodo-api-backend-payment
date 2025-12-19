@@ -41,6 +41,8 @@ class PaystackService
             ])->post("{$this->baseUrl}/dedicated_account/assign", [
                 'customer' => $customerCode,
                 'preferred_bank' => 'wema-bank',
+                'first_name' => $customer->business_name,
+                'last_name' => $customer->business_name,
             ]);
 
             $data = $response->json();
