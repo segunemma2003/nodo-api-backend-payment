@@ -89,6 +89,43 @@ class PaystackService
 
     protected function getOrCreatePaystackCustomer(Customer $customer): string
     {
+        $firstResponse = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $this->secretKey,
+            'Content-Type' => 'application/json',
+        ])->get("{$this->baseUrl}/customer/{$customer->email}");
+
+        $firstData = $firstResponse->json();
+
+        if ($firstResponse->successful() && isset($firstData['status']) && $firstData['status'] && isset($firstData['data']['customer_code'])) {
+            $existingCustomer = $firstData['data'];
+            $customerCode = $existingCustomer['customer_code'];
+
+            if (empty($existingCustomer['first_name']) || empty($existingCustomer['last_name'])) {
+                $updateResponse = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $this->secretKey,
+                    'Content-Type' => 'application/json',
+                ])->put("{$this->baseUrl}/customer/{$customerCode}", [
+                    'first_name' => $customer->business_name,
+                    'last_name' => $customer->business_name,
+                    'phone' => $customer->phone ?? '',
+                ]);
+
+                if (!$updateResponse->successful()) {
+                    Log::warning('Failed to update Paystack customer details', [
+                        'customer_id' => $customer->id,
+                        'customer_code' => $customerCode,
+                        'response' => $updateResponse->json(),
+                    ]);
+                }
+            }
+
+            Log::info('Paystack customer already exists', [
+                'customer_id' => $customer->id,
+                'customer_code' => $customerCode,
+            ]);
+            return $customerCode;
+        }
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->secretKey,
             'Content-Type' => 'application/json',
@@ -109,6 +146,10 @@ class PaystackService
             throw new \Exception('Failed to create Paystack customer: ' . ($data['message'] ?? 'Unknown error'));
         }
 
+        Log::info('Paystack customer created successfully', [
+            'customer_id' => $customer->id,
+            'customer_code' => $data['data']['customer_code'],
+        ]);
         return $data['data']['customer_code'];
     }
 
