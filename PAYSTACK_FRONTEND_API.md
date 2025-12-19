@@ -684,6 +684,38 @@ async function testPaymentStatus() {
 
 ---
 
+## Clearing Old Errors / Failed Jobs
+
+### Clear Failed Queue Jobs on Heroku
+
+If you have old failed jobs in the queue, you can clear them:
+
+```bash
+# View failed jobs
+heroku run php artisan queue:failed --app nodopay-api
+
+# Clear all failed jobs
+heroku run php artisan queue:flush --app nodopay-api
+
+# Retry specific failed job
+heroku run php artisan queue:retry {job-id} --app nodopay-api
+
+# Retry all failed jobs
+heroku run php artisan queue:retry all --app nodopay-api
+```
+
+### Check Queue Status
+
+```bash
+# View queue status
+heroku logs --tail --app nodopay-api | grep -i queue
+
+# Check worker status
+heroku ps --app nodopay-api
+```
+
+---
+
 ## Support
 
 For issues or questions:
@@ -691,4 +723,5 @@ For issues or questions:
 - Review application logs for processing errors
 - Verify Paystack keys are configured correctly
 - Ensure queue worker is running on server
+- Clear failed jobs if needed (see above)
 
