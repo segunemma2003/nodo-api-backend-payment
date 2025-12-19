@@ -93,8 +93,6 @@ class PaystackService
                 }
             }
 
-            $customerCode = $this->getOrCreatePaystackCustomer($customer);
-            
             return [
                 'account_number' => $accountDetails['account_number'] ?? null,
                 'account_name' => $accountDetails['account_name'] ?? null,
