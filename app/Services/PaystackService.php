@@ -67,11 +67,30 @@ class PaystackService
             $accountDetails = $data['data']['dedicated_account'] ?? $data['data'] ?? null;
             
             if (!$accountDetails || !isset($accountDetails['account_number'])) {
-                Log::error('Paystack virtual account response missing account details', [
-                    'customer_id' => $customer->id,
-                    'response' => $data,
-                ]);
-                throw new \Exception('Virtual account details not found in response');
+                if (isset($data['message']) && str_contains(strtolower($data['message']), 'in progress')) {
+                    Log::info('Paystack virtual account assignment in progress, fetching account details', [
+                        'customer_id' => $customer->id,
+                        'customer_code' => $customerCode,
+                    ]);
+                    
+                    sleep(3);
+                    
+                    $accountDetails = $this->fetchDedicatedAccountByCustomer($customerCode);
+                    
+                    if (!$accountDetails || !isset($accountDetails['account_number'])) {
+                        Log::warning('Paystack virtual account still not available after wait', [
+                            'customer_id' => $customer->id,
+                            'customer_code' => $customerCode,
+                        ]);
+                        throw new \Exception('Virtual account is being created. Please check back in a few moments.');
+                    }
+                } else {
+                    Log::error('Paystack virtual account response missing account details', [
+                        'customer_id' => $customer->id,
+                        'response' => $data,
+                    ]);
+                    throw new \Exception('Virtual account details not found in response');
+                }
             }
 
             return [
@@ -194,6 +213,40 @@ class PaystackService
                 'error' => $e->getMessage(),
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Fetch dedicated account by customer code
+     */
+    protected function fetchDedicatedAccountByCustomer(string $customerCode): ?array
+    {
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Content-Type' => 'application/json',
+            ])->get("{$this->baseUrl}/dedicated_account", [
+                'customer' => $customerCode,
+            ]);
+
+            $data = $response->json();
+
+            if ($response->successful() && isset($data['status']) && $data['status'] && isset($data['data'])) {
+                $accounts = $data['data'];
+                
+                if (is_array($accounts) && count($accounts) > 0) {
+                    $account = $accounts[0];
+                    return $account;
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Paystack fetch dedicated account by customer exception', [
+                'customer_code' => $customerCode,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
         }
     }
 }
