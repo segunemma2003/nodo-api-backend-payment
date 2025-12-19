@@ -38,9 +38,9 @@ class PaystackService
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->secretKey,
                 'Content-Type' => 'application/json',
-            ])->post("{$this->baseUrl}/dedicated_account", [
+            ])->post("{$this->baseUrl}/dedicated_account/assign", [
                 'customer' => $customerCode,
-                'preferred_bank' => '',
+                'preferred_bank' => 'wema-bank',
                 'country' => 'NG',
             ]);
 

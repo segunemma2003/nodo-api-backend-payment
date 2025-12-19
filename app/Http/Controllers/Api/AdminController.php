@@ -19,6 +19,7 @@ use App\Notifications\BusinessCreatedNotification;
 use App\Notifications\CustomerCreatedNotification;
 use App\Services\CreditLimitService;
 use App\Services\InterestService;
+use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -30,11 +31,13 @@ class AdminController extends Controller
 {
     protected CreditLimitService $creditLimitService;
     protected InterestService $interestService;
+    protected PaystackService $paystackService;
 
-    public function __construct(CreditLimitService $creditLimitService, InterestService $interestService)
+    public function __construct(CreditLimitService $creditLimitService, InterestService $interestService, PaystackService $paystackService)
     {
         $this->creditLimitService = $creditLimitService;
         $this->interestService = $interestService;
+        $this->paystackService = $paystackService;
     }
 
     public function createCustomer(Request $request)
@@ -1226,6 +1229,79 @@ class AdminController extends Controller
             'message' => 'Payment claim rejected',
             'payment' => $payment,
         ]);
+    }
+
+    public function generateVirtualAccount(Request $request, $id)
+    {
+        $customer = Customer::findOrFail($id);
+
+        if (!empty($customer->virtual_account_number)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Customer already has a virtual account',
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+            ], 400);
+        }
+
+        if (!$this->paystackService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paystack is not configured. Please set PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY.',
+            ], 503);
+        }
+
+        CreateVirtualAccountJob::dispatch($customer);
+
+        Log::info('Virtual account generation job dispatched for existing customer by admin', [
+            'customer_id' => $customer->id,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        Cache::forget('admin_customer_' . $id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Virtual account generation has been queued. It will be created shortly.',
+            'status' => 'queued',
+            'customer_id' => $customer->id,
+        ], 202);
+    }
+
+    public function generateVirtualAccountsForAll(Request $request)
+    {
+        if (!$this->paystackService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paystack is not configured. Please set PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY.',
+            ], 503);
+        }
+
+        $customersWithoutVirtualAccount = Customer::whereNull('virtual_account_number')
+            ->orWhere('virtual_account_number', '')
+            ->get();
+
+        $count = $customersWithoutVirtualAccount->count();
+        $queued = 0;
+
+        foreach ($customersWithoutVirtualAccount as $customer) {
+            CreateVirtualAccountJob::dispatch($customer);
+            $queued++;
+        }
+
+        Log::info('Bulk virtual account generation jobs dispatched by admin', [
+            'total_customers' => $count,
+            'jobs_queued' => $queued,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Virtual account generation queued for {$queued} customer(s). They will be created shortly.",
+            'total_customers' => $count,
+            'jobs_queued' => $queued,
+            'status' => 'queued',
+        ], 202);
     }
 
     /**

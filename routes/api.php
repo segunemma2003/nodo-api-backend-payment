@@ -82,6 +82,8 @@ Route::prefix('admin')->group(function () {
     Route::post('/customers/{id}/add-credits', [AdminController::class, 'addCreditsToCustomer']);
     Route::patch('/customers/{id}/status', [AdminController::class, 'updateCustomerStatus']);
     Route::patch('/customers/{id}/approval', [AdminController::class, 'updateCustomerApproval']);
+    Route::post('/customers/{id}/generate-virtual-account', [AdminController::class, 'generateVirtualAccount']);
+    Route::post('/customers/generate-virtual-accounts-all', [AdminController::class, 'generateVirtualAccountsForAll']);
     
     // Business Customer Management (Customers created by businesses)
     Route::get('/business-customers', [AdminController::class, 'getBusinessCustomers']);
