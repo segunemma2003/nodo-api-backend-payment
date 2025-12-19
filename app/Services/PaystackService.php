@@ -44,6 +44,7 @@ class PaystackService
                 'email' => $customer->email,
                 'first_name' => $customer->business_name,
                 'last_name' => $customer->business_name,
+                'phone' => $customer->phone ?? '',
             ]);
 
             $data = $response->json();
