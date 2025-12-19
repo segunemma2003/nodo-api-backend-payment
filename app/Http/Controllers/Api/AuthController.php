@@ -3,13 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateVirtualAccountJob;
 use App\Models\Customer;
+use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    protected PaystackService $paystackService;
+
+    public function __construct(PaystackService $paystackService)
+    {
+        $this->paystackService = $paystackService;
+    }
+
     /**
      * Customer login
      */
@@ -114,6 +124,19 @@ class AuthController extends Controller
             'status' => 'inactive', // Inactive until approved
         ]);
 
+        // Dispatch job to create Paystack virtual account asynchronously
+        // This doesn't block the registration process
+        if ($this->paystackService->isConfigured()) {
+            CreateVirtualAccountJob::dispatch($customer);
+            Log::info('Virtual account creation job dispatched for customer', [
+                'customer_id' => $customer->id,
+            ]);
+        } else {
+            Log::info('Paystack not configured, skipping virtual account creation during registration', [
+                'customer_id' => $customer->id,
+            ]);
+        }
+
         // Handle KYC documents if provided
         if ($request->hasFile('kyc_documents')) {
             $kycPaths = [];
@@ -139,6 +162,8 @@ class AuthController extends Controller
                 'business_name' => $customer->business_name,
                 'email' => $customer->email,
                 'approval_status' => $customer->approval_status,
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
             ],
         ], 201);
     }

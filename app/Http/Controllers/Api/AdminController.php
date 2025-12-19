@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateVirtualAccountJob;
 use App\Jobs\UploadFileToS3Job;
 use App\Models\Business;
 use App\Models\BusinessCustomer;
@@ -67,6 +68,23 @@ class AdminController extends Controller
             'approval_status' => 'approved', // Admin-created customers are auto-approved
             'status' => 'active', // Admin-created customers are auto-active
         ]);
+
+        // Dispatch job to create Paystack virtual account asynchronously if not provided manually
+        // This doesn't block the customer creation process
+        if (!$request->virtual_account_number) {
+            $paystackService = app(\App\Services\PaystackService::class);
+            
+            if ($paystackService->isConfigured()) {
+                CreateVirtualAccountJob::dispatch($customer);
+                Log::info('Virtual account creation job dispatched for admin-created customer', [
+                    'customer_id' => $customer->id,
+                ]);
+            } else {
+                Log::info('Paystack not configured, skipping virtual account creation for admin-created customer', [
+                    'customer_id' => $customer->id,
+                ]);
+            }
+        }
 
         // Calculate and set credit limit
         $this->creditLimitService->updateCustomerCreditLimit($customer);

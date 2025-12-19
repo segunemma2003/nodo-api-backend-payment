@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CustomerDashboardController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\PayWithNodopayController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaystackController;
 use App\Http\Controllers\Api\TestController;
 use App\Http\Controllers\Api\InvoiceCheckoutController;
 
@@ -38,6 +39,7 @@ Route::prefix('customer')->group(function () {
     Route::get('/invoices/{invoiceId}', [CustomerDashboardController::class, 'getInvoice']);
     Route::get('/transactions', [CustomerDashboardController::class, 'getTransactions']);
     Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
+    Route::post('/repayment-account/generate', [CustomerDashboardController::class, 'generateVirtualAccount']);
     Route::post('/submit-payment', [CustomerDashboardController::class, 'submitPaymentClaim']);
     Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
     Route::put('/profile', [CustomerDashboardController::class, 'updateProfile']);
@@ -125,9 +127,13 @@ Route::prefix('pay-with-nodopay')->middleware('api.token')->group(function () {
 // Payment Processing Routes
 Route::prefix('payments')->group(function () {
     Route::post('/webhook', [PaymentController::class, 'paymentWebhook']);
+    Route::post('/webhook/paystack', [PaymentController::class, 'paystackWebhook']); // Dedicated Paystack webhook
     Route::post('/record', [PaymentController::class, 'recordPayment']);
     Route::get('/history/{customerId}', [PaymentController::class, 'getPaymentHistory']);
 });
+
+// Paystack Configuration Check (for admin/testing)
+Route::get('/paystack/status', [PaystackController::class, 'checkConfiguration']);
 
 // Public Invoice Checkout Routes
 Route::prefix('invoice')->group(function () {

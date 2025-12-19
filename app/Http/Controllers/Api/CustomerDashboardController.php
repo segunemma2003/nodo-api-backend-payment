@@ -3,22 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateVirtualAccountJob;
 use App\Models\CreditLimitAdjustment;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Transaction;
 use App\Services\InterestService;
+use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class CustomerDashboardController extends Controller
 {
     protected InterestService $interestService;
+    protected PaystackService $paystackService;
 
-    public function __construct(InterestService $interestService)
+    public function __construct(InterestService $interestService, PaystackService $paystackService)
     {
         $this->interestService = $interestService;
+        $this->paystackService = $paystackService;
     }
 
     /**
@@ -281,7 +286,52 @@ class CustomerDashboardController extends Controller
         return response()->json([
             'virtual_account_number' => $customer->virtual_account_number,
             'virtual_account_bank' => $customer->virtual_account_bank,
+            'has_virtual_account' => !empty($customer->virtual_account_number),
         ]);
+    }
+
+    /**
+     * Generate virtual account for existing customer
+     * Dispatches a queue job to create the virtual account asynchronously
+     */
+    public function generateVirtualAccount(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+
+        // Check if customer already has a virtual account
+        if (!empty($customer->virtual_account_number)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Virtual account already exists for this customer',
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+            ], 400);
+        }
+
+        // Check if Paystack is configured
+        if (!$this->paystackService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paystack is not configured. Please set PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY in your .env file and contact administrator.',
+                'paystack_configured' => false,
+            ], 503);
+        }
+
+        // Dispatch job to create virtual account asynchronously
+        // This doesn't block the request
+        CreateVirtualAccountJob::dispatch($customer);
+
+        Log::info('Virtual account generation job dispatched for existing customer', [
+            'customer_id' => $customer->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Virtual account generation has been queued. Your virtual account will be created shortly. Please check your account details in a few moments.',
+            'status' => 'queued',
+            'customer_id' => $customer->id,
+            'note' => 'You can check your virtual account status by calling GET /api/customer/repayment-account',
+        ], 202); // 202 Accepted - request accepted for processing
     }
 
     /**
