@@ -55,9 +55,19 @@ class PaystackService
                 throw new \Exception('Failed to create virtual account: ' . ($data['message'] ?? 'Unknown error'));
             }
 
-            $accountDetails = $data['data']['dedicated_account'] ?? null;
+            Log::info('Paystack dedicated account response', [
+                'customer_id' => $customer->id,
+                'response_structure' => array_keys($data['data'] ?? []),
+                'full_response' => $data,
+            ]);
+
+            $accountDetails = $data['data']['dedicated_account'] ?? $data['data'] ?? null;
             
-            if (!$accountDetails) {
+            if (!$accountDetails || !isset($accountDetails['account_number'])) {
+                Log::error('Paystack virtual account response missing account details', [
+                    'customer_id' => $customer->id,
+                    'response' => $data,
+                ]);
                 throw new \Exception('Virtual account details not found in response');
             }
 
