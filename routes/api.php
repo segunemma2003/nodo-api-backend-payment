@@ -40,6 +40,7 @@ Route::prefix('customer')->group(function () {
     Route::get('/transactions', [CustomerDashboardController::class, 'getTransactions']);
     Route::get('/repayment-account', [CustomerDashboardController::class, 'getRepaymentAccount']);
     Route::post('/repayment-account/generate', [CustomerDashboardController::class, 'generateVirtualAccount']);
+    Route::post('/repayment-account/refresh', [CustomerDashboardController::class, 'refreshVirtualAccount']);
     Route::post('/submit-payment', [CustomerDashboardController::class, 'submitPaymentClaim']);
     Route::get('/profile', [CustomerDashboardController::class, 'getProfile']);
     Route::put('/profile', [CustomerDashboardController::class, 'updateProfile']);

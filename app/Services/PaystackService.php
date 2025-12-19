@@ -93,13 +93,15 @@ class PaystackService
                 }
             }
 
+            $customerCode = $this->getOrCreatePaystackCustomer($customer);
+            
             return [
                 'account_number' => $accountDetails['account_number'] ?? null,
                 'account_name' => $accountDetails['account_name'] ?? null,
                 'bank' => $accountDetails['bank']['name'] ?? null,
                 'bank_code' => $accountDetails['bank']['id'] ?? null,
-                'paystack_customer_code' => $data['data']['customer']['customer_code'] ?? null,
-                'paystack_dedicated_account_id' => $data['data']['dedicated_account']['id'] ?? null,
+                'paystack_customer_code' => $customerCode,
+                'paystack_dedicated_account_id' => $accountDetails['id'] ?? null,
             ];
         } catch (\Exception $e) {
             Log::error('Paystack virtual account creation exception', [
@@ -219,7 +221,7 @@ class PaystackService
     /**
      * Fetch dedicated account by customer code
      */
-    protected function fetchDedicatedAccountByCustomer(string $customerCode): ?array
+    public function fetchDedicatedAccountByCustomer(string $customerCode): ?array
     {
         try {
             $response = Http::withHeaders([

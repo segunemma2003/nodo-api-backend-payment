@@ -35,12 +35,27 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-acc
 })
 ```
 
+**Query Parameters:**
+- `refresh` (optional): Set to `true` to fetch latest account from Paystack
+
+**Request (with refresh):**
+```javascript
+fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?refresh=true', {
+  method: 'GET',
+  headers: {
+    'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
+    'Content-Type': 'application/json'
+  }
+})
+```
+
 **Response (200 OK):**
 ```json
 {
   "virtual_account_number": "1234567890",
   "virtual_account_bank": "Wema Bank",
-  "has_virtual_account": true
+  "has_virtual_account": true,
+  "status": "active"
 }
 ```
 
@@ -49,13 +64,92 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-acc
 {
   "virtual_account_number": null,
   "virtual_account_bank": null,
-  "has_virtual_account": false
+  "has_virtual_account": false,
+  "status": "pending"
 }
 ```
 
 ---
 
-### 2. Generate Virtual Account (Existing Customers)
+### 2. Refresh Virtual Account from Paystack
+
+**Endpoint:** `POST /api/customer/repayment-account/refresh`
+
+**Authentication:** Required (Customer token)
+
+**Description:** Fetches the latest virtual account details from Paystack and updates the customer record. Use this when the account is "in progress" or to sync with Paystack.
+
+**Request:**
+```javascript
+fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/refresh', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
+    'Content-Type': 'application/json'
+  }
+})
+```
+
+**Response (200 OK - Account Found):**
+```json
+{
+  "success": true,
+  "message": "Virtual account refreshed successfully",
+  "virtual_account_number": "1234567890",
+  "virtual_account_bank": "Wema Bank",
+  "has_virtual_account": true
+}
+```
+
+**Response (202 Accepted - Still Pending):**
+```json
+{
+  "success": false,
+  "message": "Virtual account not yet available. It may still be in progress. Please try again in a few moments.",
+  "status": "pending"
+}
+```
+
+**Response (400 - No Customer Code):**
+```json
+{
+  "success": false,
+  "message": "Customer does not have a Paystack customer code. Please generate a virtual account first."
+}
+```
+
+**Frontend Implementation:**
+```javascript
+async function refreshVirtualAccount() {
+  try {
+    const response = await fetch('/api/customer/repayment-account/refresh', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${customerToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+
+    if (response.status === 200 && data.success) {
+      showSuccess('Virtual account refreshed!');
+      displayVirtualAccount(data);
+    } else if (response.status === 202) {
+      showInfo('Account still being created. Please try again in a moment.');
+      setTimeout(refreshVirtualAccount, 5000);
+    } else {
+      showError(data.message);
+    }
+  } catch (error) {
+    showError('Failed to refresh virtual account');
+  }
+}
+```
+
+---
+
+### 3. Generate Virtual Account (Existing Customers)
 
 **Endpoint:** `POST /api/customer/repayment-account/generate`
 
@@ -667,8 +761,9 @@ async function testPaymentStatus() {
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/customer/repayment-account` | GET | Get virtual account details |
+| `/api/customer/repayment-account` | GET | Get virtual account details (add `?refresh=true` to sync from Paystack) |
 | `/api/customer/repayment-account/generate` | POST | Generate virtual account |
+| `/api/customer/repayment-account/refresh` | POST | Refresh virtual account from Paystack |
 | `/api/customer/transactions` | GET | Get payment history |
 | `/api/customer/dashboard` | GET | Get payment statistics |
 | `/api/admin/customers/{id}/generate-virtual-account` | POST | Admin: Generate for specific customer |

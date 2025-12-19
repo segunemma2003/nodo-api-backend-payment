@@ -69,6 +69,8 @@ class CreateVirtualAccountJob implements ShouldQueue
                 // Update customer with virtual account details
                 $this->customer->virtual_account_number = $virtualAccount['account_number'] ?? null;
                 $this->customer->virtual_account_bank = $virtualAccount['bank'] ?? null;
+                $this->customer->paystack_customer_code = $virtualAccount['paystack_customer_code'] ?? $this->customer->paystack_customer_code;
+                $this->customer->paystack_dedicated_account_id = $virtualAccount['paystack_dedicated_account_id'] ?? null;
                 $this->customer->save();
 
                 Log::info('Virtual account created successfully via queue job', [

@@ -282,12 +282,104 @@ class CustomerDashboardController extends Controller
     public function getRepaymentAccount(Request $request)
     {
         $customer = $this->getCustomer($request);
+        
+        $refresh = $request->get('refresh', false);
+        
+        if ($refresh && $this->paystackService->isConfigured() && !empty($customer->paystack_customer_code)) {
+            try {
+                $accountDetails = $this->paystackService->fetchDedicatedAccountByCustomer($customer->paystack_customer_code);
+                
+                if ($accountDetails && isset($accountDetails['account_number'])) {
+                    $customer->virtual_account_number = $accountDetails['account_number'] ?? null;
+                    $customer->virtual_account_bank = $accountDetails['bank']['name'] ?? null;
+                    $customer->paystack_dedicated_account_id = $accountDetails['id'] ?? null;
+                    $customer->save();
+                    
+                    Log::info('Virtual account refreshed from Paystack', [
+                        'customer_id' => $customer->id,
+                        'virtual_account_number' => $customer->virtual_account_number,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to refresh virtual account from Paystack', [
+                    'customer_id' => $customer->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         return response()->json([
             'virtual_account_number' => $customer->virtual_account_number,
             'virtual_account_bank' => $customer->virtual_account_bank,
             'has_virtual_account' => !empty($customer->virtual_account_number),
+            'status' => !empty($customer->virtual_account_number) ? 'active' : 'pending',
         ]);
+    }
+    
+    /**
+     * Refresh virtual account from Paystack
+     * Fetches the latest account details from Paystack and updates the customer record
+     */
+    public function refreshVirtualAccount(Request $request)
+    {
+        $customer = $this->getCustomer($request);
+
+        if (!$this->paystackService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paystack is not configured.',
+            ], 503);
+        }
+
+        if (empty($customer->paystack_customer_code)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Customer does not have a Paystack customer code. Please generate a virtual account first.',
+            ], 400);
+        }
+
+        try {
+            $accountDetails = $this->paystackService->fetchDedicatedAccountByCustomer($customer->paystack_customer_code);
+            
+            if (!$accountDetails || !isset($accountDetails['account_number'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Virtual account not yet available. It may still be in progress. Please try again in a few moments.',
+                    'status' => 'pending',
+                ], 202);
+            }
+
+            $customer->virtual_account_number = $accountDetails['account_number'] ?? null;
+            $customer->virtual_account_bank = $accountDetails['bank']['name'] ?? null;
+            $customer->paystack_dedicated_account_id = $accountDetails['id'] ?? null;
+            $customer->save();
+
+            Log::info('Virtual account refreshed from Paystack', [
+                'customer_id' => $customer->id,
+                'virtual_account_number' => $customer->virtual_account_number,
+            ]);
+
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Virtual account refreshed successfully',
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+                'has_virtual_account' => true,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to refresh virtual account from Paystack', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to refresh virtual account: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
