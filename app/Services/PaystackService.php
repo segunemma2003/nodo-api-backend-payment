@@ -100,23 +100,27 @@ class PaystackService
             $existingCustomer = $firstData['data'];
             $customerCode = $existingCustomer['customer_code'];
 
-            if (empty($existingCustomer['first_name']) || empty($existingCustomer['last_name'])) {
-                $updateResponse = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $this->secretKey,
-                    'Content-Type' => 'application/json',
-                ])->put("{$this->baseUrl}/customer/{$customerCode}", [
-                    'first_name' => $customer->business_name,
-                    'last_name' => $customer->business_name,
-                    'phone' => $customer->phone ?? '',
-                ]);
+            $updateResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Content-Type' => 'application/json',
+            ])->put("{$this->baseUrl}/customer/{$customerCode}", [
+                'first_name' => $customer->business_name,
+                'last_name' => $customer->business_name,
+                'phone' => $customer->phone ?? '',
+            ]);
 
-                if (!$updateResponse->successful()) {
-                    Log::warning('Failed to update Paystack customer details', [
-                        'customer_id' => $customer->id,
-                        'customer_code' => $customerCode,
-                        'response' => $updateResponse->json(),
-                    ]);
-                }
+            if (!$updateResponse->successful()) {
+                Log::warning('Failed to update Paystack customer details', [
+                    'customer_id' => $customer->id,
+                    'customer_code' => $customerCode,
+                    'response' => $updateResponse->json(),
+                ]);
+            } else {
+                Log::info('Paystack customer details updated', [
+                    'customer_id' => $customer->id,
+                    'customer_code' => $customerCode,
+                    'first_name' => $customer->business_name,
+                ]);
             }
 
             Log::info('Paystack customer already exists', [
