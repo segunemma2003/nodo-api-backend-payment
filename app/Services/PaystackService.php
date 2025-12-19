@@ -26,9 +26,6 @@ class PaystackService
         return !empty($this->secretKey) && !empty($this->publicKey);
     }
 
-    /**
-     * Create a dedicated virtual account for a customer
-     */
     public function createVirtualAccount(Customer $customer): array
     {
         if (!$this->isConfigured()) {
@@ -36,16 +33,15 @@ class PaystackService
         }
 
         try {
+            $customerCode = $this->getOrCreatePaystackCustomer($customer);
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->secretKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/dedicated_account", [
-                'email' => $customer->email,
-                'first_name' => $customer->business_name,
-                'last_name' => $customer->business_name,
-                'phone' => $customer->phone ?? '',
-                'preferred_bank' => '', // Let Paystack assign a bank
-                'country' => 'NG', // Nigeria
+                'customer' => $customerCode,
+                'preferred_bank' => '',
+                'country' => 'NG',
             ]);
 
             $data = $response->json();
@@ -53,12 +49,12 @@ class PaystackService
             if (!$response->successful() || !isset($data['status']) || !$data['status']) {
                 Log::error('Paystack virtual account creation failed', [
                     'customer_id' => $customer->id,
+                    'customer_code' => $customerCode,
                     'response' => $data,
                 ]);
                 throw new \Exception('Failed to create virtual account: ' . ($data['message'] ?? 'Unknown error'));
             }
 
-            // Extract virtual account details
             $accountDetails = $data['data']['dedicated_account'] ?? null;
             
             if (!$accountDetails) {
@@ -80,6 +76,31 @@ class PaystackService
             ]);
             throw $e;
         }
+    }
+
+    protected function getOrCreatePaystackCustomer(Customer $customer): string
+    {
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $this->secretKey,
+            'Content-Type' => 'application/json',
+        ])->post("{$this->baseUrl}/customer", [
+            'email' => $customer->email,
+            'first_name' => $customer->business_name,
+            'last_name' => $customer->business_name,
+            'phone' => $customer->phone ?? '',
+        ]);
+
+        $data = $response->json();
+
+        if (!$response->successful() || !isset($data['status']) || !$data['status']) {
+            Log::error('Paystack customer creation failed', [
+                'customer_id' => $customer->id,
+                'response' => $data,
+            ]);
+            throw new \Exception('Failed to create Paystack customer: ' . ($data['message'] ?? 'Unknown error'));
+        }
+
+        return $data['data']['customer_code'];
     }
 
     /**
