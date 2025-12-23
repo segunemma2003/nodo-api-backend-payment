@@ -29,6 +29,8 @@ class Customer extends Authenticatable
         'available_balance',
         'virtual_account_number',
         'virtual_account_bank',
+        'paystack_customer_code',
+        'paystack_dedicated_account_id',
         'kyc_documents',
         'status',
         'approval_status',
