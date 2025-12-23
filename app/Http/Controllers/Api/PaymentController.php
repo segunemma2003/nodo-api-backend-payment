@@ -144,8 +144,8 @@ class PaymentController extends Controller
                 ]);
             }
 
-            $payment = $this->paymentService->processRepayment(
-                $customer,
+        $payment = $this->paymentService->processRepayment(
+            $customer,
                 $amount,
                 $transactionReference
             );
@@ -165,22 +165,22 @@ class PaymentController extends Controller
                 'current_balance' => $customer->current_balance,
             ]);
 
-            return response()->json([
-                'success' => true,
+        return response()->json([
+            'success' => true,
                 'message' => 'Payment processed successfully and repayment details updated',
-                'payment' => [
-                    'payment_reference' => $payment->payment_reference,
-                    'amount' => $payment->amount,
-                    'status' => $payment->status,
+            'payment' => [
+                'payment_reference' => $payment->payment_reference,
+                'amount' => $payment->amount,
+                'status' => $payment->status,
                     'transaction_reference' => $transactionReference,
-                ],
-                'customer' => [
+            ],
+            'customer' => [
                     'id' => $customer->id,
                     'account_number' => $customer->account_number,
                     'available_balance' => $customer->available_balance,
                     'current_balance' => $customer->current_balance,
-                ],
-            ]);
+            ],
+        ]);
         } catch (\Exception $e) {
             Log::error('Paystack webhook processing error', [
                 'error' => $e->getMessage(),

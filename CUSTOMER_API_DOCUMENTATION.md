@@ -39,7 +39,9 @@ curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/re
     "account_number": "1234567890123456",
     "business_name": "ABC Company",
     "email": "customer@example.com",
-    "approval_status": "pending"
+    "approval_status": "pending",
+    "virtual_account_number": "1234567890",
+    "virtual_account_bank": "Wema Bank"
   }
 }
 ```
@@ -50,6 +52,14 @@ curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/re
 - Customer **cannot login** until admin approves the account
 - Admin will set credit limit when approving
 - You will be notified when your account is approved
+
+**🎯 AUTOMATIC VIRTUAL ACCOUNT CREATION:**
+- **Virtual account is automatically created during registration** via Paystack integration
+- The virtual account creation process runs asynchronously in the background
+- The registration response may include `virtual_account_number` and `virtual_account_bank` if ready immediately
+- If the virtual account is not ready yet (shown as `null` in response), it will be created within a few moments
+- You can check your virtual account status by calling `GET /api/customer/repayment-account?customer_id={id}` after your account is approved
+- The virtual account is used for making repayments - transfer funds to this account and payments will be automatically recorded
 
 **Required Fields:**
 - `business_name` (string, max 255)
@@ -88,10 +98,19 @@ curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/lo
   "customer": {
     "id": 1,
     "account_number": "1234567890123456",
+    "cvv": "123",
     "business_name": "ABC Company",
     "email": "customer@example.com",
+    "username": "customer123",
+    "phone": "08012345678",
+    "address": "Lagos, Nigeria",
     "credit_limit": "100000.00",
-    "available_balance": "75000.00"
+    "current_balance": "25000.00",
+    "available_balance": "75000.00",
+    "virtual_account_number": "1234567890",
+    "virtual_account_bank": "Wema Bank",
+    "status": "active",
+    "approval_status": "approved"
   },
   "token": "session_token_here"
 }
@@ -102,6 +121,8 @@ curl -X POST https://nodopay-api-0fbd4546e629.herokuapp.com/api/auth/customer/lo
 - Account must have `status = 'active'` to access endpoints
 - The `token` returned is for session management
 - All customer endpoints require `customer_id` as a query parameter
+- **Virtual account details are included in the login response** - use `virtual_account_number` and `virtual_account_bank` for making repayments
+- If `virtual_account_number` is `null`, the virtual account is still being created (check back in a few moments or use the generate endpoint)
 
 **Error Responses:**
 
@@ -315,15 +336,94 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transac
 curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?customer_id=1"
 ```
 
-**Response (200 OK):**
+**Response (200 OK) - Virtual Account Ready:**
 ```json
 {
   "virtual_account_number": "1234567890",
-  "virtual_account_bank": "Sterling Bank"
+  "virtual_account_bank": "Wema Bank"
 }
 ```
 
-**Note:** Use this virtual account to make repayments. Transfer funds to this account and payments will be automatically recorded.
+**Response (200 OK) - Virtual Account Not Ready Yet:**
+```json
+{
+  "virtual_account_number": null,
+  "virtual_account_bank": null,
+  "message": "Virtual account is being created. Please check back in a few moments."
+}
+```
+
+**⚠️ IMPORTANT NOTES:**
+- **Virtual accounts are automatically created during registration** - no manual action required
+- The virtual account creation process runs asynchronously, so it may take a few moments to be ready
+- If the virtual account is not ready yet, you can:
+  1. Wait a few moments and check again
+  2. Use the generate endpoint: `POST /api/customer/repayment-account/generate?customer_id={id}` to manually trigger creation
+- Once ready, use this virtual account to make repayments - transfer funds to this account and payments will be automatically recorded via Paystack webhooks
+- The virtual account is linked to your customer account and all payments made to it are automatically processed
+
+---
+
+### 5a. Generate Virtual Account (Manual Trigger)
+**POST** `/api/customer/repayment-account/generate`
+
+**Query Parameters:**
+- `customer_id` (required): Customer ID
+
+**Request:**
+```bash
+curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/generate?customer_id=1"
+```
+
+**Response (200 OK) - Virtual Account Created:**
+```json
+{
+  "success": true,
+  "message": "Virtual account created successfully",
+  "virtual_account_number": "1234567890",
+  "virtual_account_bank": "Wema Bank",
+  "has_virtual_account": true,
+  "status": "active"
+}
+```
+
+**Response (500 Internal Server Error) - Creation Failed:**
+```json
+{
+  "success": false,
+  "message": "Failed to create virtual account: [error message]",
+  "error": "[detailed error message]"
+}
+```
+
+**Response (400 Bad Request) - Already Exists:**
+```json
+{
+  "success": false,
+  "message": "Virtual account already exists for this customer",
+  "virtual_account_number": "1234567890",
+  "virtual_account_bank": "Wema Bank"
+}
+```
+
+**Response (503 Service Unavailable) - Paystack Not Configured:**
+```json
+{
+  "success": false,
+  "message": "Paystack is not configured. Please set PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY in your .env file and contact administrator.",
+  "paystack_configured": false
+}
+```
+
+**⚠️ IMPORTANT NOTES:**
+- This endpoint manually triggers virtual account creation if it wasn't created during registration or if there was an issue
+- **Note:** Virtual accounts are automatically created during registration, so this endpoint is typically only needed if:
+  - The automatic creation failed
+  - You need to regenerate the virtual account
+  - The virtual account was not created for any reason
+- **The creation process runs synchronously** - you'll receive the actual virtual account details immediately in the response
+- The virtual account number and bank are returned directly in the response, so you can use them immediately
+- If creation fails, you'll receive an error message with details about what went wrong
 
 ---
 
@@ -541,7 +641,15 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/credit-
 curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/invoices?customer_id=1"
 ```
 
-### Step 5: Get Profile
+### Step 5: Get Virtual Account (Repayment Account)
+```bash
+# Check your virtual account (automatically created during registration)
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?customer_id=1"
+```
+
+**Note:** The virtual account is automatically created during registration. If it's not ready yet, wait a few moments and check again, or use the generate endpoint.
+
+### Step 6: Get Profile
 ```bash
 curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/profile?customer_id=1"
 ```
@@ -625,7 +733,12 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/profile
 4. **Authentication:** All endpoints require `customer_id` as query parameter
 5. **Caching:** Some endpoints use caching (credit overview: 60s, invoices: 120s)
 6. **Interest:** 3.5% monthly interest applies after 30-day grace period
-7. **Virtual Account:** Use the virtual account number for repayments
+7. **Virtual Account:** 
+   - **Automatically created during registration** via Paystack integration
+   - Created asynchronously in the background (may take a few moments)
+   - Use the virtual account number for repayments - transfer funds to this account and payments are automatically recorded
+   - Check status via `GET /api/customer/repayment-account?customer_id={id}`
+   - If not ready, use `POST /api/customer/repayment-account/generate?customer_id={id}` to manually trigger creation
 
 ---
 

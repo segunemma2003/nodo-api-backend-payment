@@ -409,21 +409,48 @@ class CustomerDashboardController extends Controller
             ], 503);
         }
 
-        // Dispatch job to create virtual account asynchronously
-        // This doesn't block the request
-        CreateVirtualAccountJob::dispatch($customer);
+        try {
+            // Create virtual account synchronously
+            $virtualAccount = $this->paystackService->createVirtualAccount($customer);
 
-        Log::info('Virtual account generation job dispatched for existing customer', [
-            'customer_id' => $customer->id,
-        ]);
+            // Refresh customer to get latest data
+            $customer->refresh();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Virtual account generation has been queued. Your virtual account will be created shortly. Please check your account details in a few moments.',
-            'status' => 'queued',
-            'customer_id' => $customer->id,
-            'note' => 'You can check your virtual account status by calling GET /api/customer/repayment-account',
-        ], 202); // 202 Accepted - request accepted for processing
+            // Update customer with virtual account details
+            if (empty($customer->virtual_account_number)) {
+                $customer->virtual_account_number = $virtualAccount['account_number'] ?? null;
+                $customer->virtual_account_bank = $virtualAccount['bank'] ?? null;
+                $customer->paystack_customer_code = $virtualAccount['paystack_customer_code'] ?? $customer->paystack_customer_code;
+                $customer->paystack_dedicated_account_id = $virtualAccount['paystack_dedicated_account_id'] ?? null;
+                $customer->save();
+            }
+
+            Log::info('Virtual account created successfully for existing customer', [
+                'customer_id' => $customer->id,
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Virtual account created successfully',
+                'virtual_account_number' => $customer->virtual_account_number,
+                'virtual_account_bank' => $customer->virtual_account_bank,
+                'has_virtual_account' => true,
+                'status' => 'active',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to create virtual account for existing customer', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create virtual account: ' . $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
