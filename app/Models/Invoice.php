@@ -26,6 +26,7 @@ class Invoice extends Model
         'paid_amount',
         'remaining_balance',
         'purchase_date',
+        'payment_plan_duration', // Duration in months
         'due_date',
         'grace_period_end_date',
         'status',
@@ -151,11 +152,11 @@ class Invoice extends Model
 
         static::creating(function ($invoice) {
             if (empty($invoice->invoice_id)) {
-                $invoice->invoice_id = 'NODO-' . strtoupper(uniqid());
+                $invoice->invoice_id = 'FSCREDIT-' . strtoupper(uniqid());
             }
-            // Only set grace_period_end_date if due_date is provided
+            // Only set grace_period_end_date if due_date is provided (1 month after due_date)
             if (empty($invoice->grace_period_end_date) && $invoice->due_date) {
-                $invoice->grace_period_end_date = Carbon::parse($invoice->due_date)->addDays(30);
+                $invoice->grace_period_end_date = Carbon::parse($invoice->due_date)->addMonth();
             }
             $invoice->remaining_balance = $invoice->total_amount;
             $invoice->is_used = false;

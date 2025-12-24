@@ -6,11 +6,12 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CustomerDashboardController;
 use App\Http\Controllers\Api\AdminController;
-use App\Http\Controllers\Api\PayWithNodopayController;
+use App\Http\Controllers\Api\PayWithFscreditController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaystackController;
 use App\Http\Controllers\Api\TestController;
 use App\Http\Controllers\Api\InvoiceCheckoutController;
+use App\Http\Controllers\Api\ProductController;
 
 /*
 |--------------------------------------------------------------------------
@@ -70,6 +71,14 @@ Route::prefix('business')->middleware('business.auth')->group(function () {
     Route::get('/transactions', [BusinessController::class, 'getTransactions']);
     Route::post('/withdrawals/request', [BusinessController::class, 'requestWithdrawal']);
     Route::get('/withdrawals', [BusinessController::class, 'getWithdrawals']);
+    
+    // Product Management
+    Route::get('/products', [ProductController::class, 'getProducts']);
+    Route::post('/products', [ProductController::class, 'createProduct']);
+    Route::post('/products/bulk', [ProductController::class, 'createBulkProducts']);
+    Route::get('/products/{id}', [ProductController::class, 'getProduct']);
+    Route::put('/products/{id}', [ProductController::class, 'updateProduct']);
+    Route::delete('/products/{id}', [ProductController::class, 'deleteProduct']);
 });
 
 // Admin Panel Routes
@@ -120,11 +129,11 @@ Route::prefix('admin')->group(function () {
     Route::patch('/payments/{id}/reject', [AdminController::class, 'rejectPayment']);
 });
 
-// Pay with Nodopay API (External Integration)
-Route::prefix('pay-with-nodopay')->middleware('api.token')->group(function () {
-    Route::post('/purchase', [PayWithNodopayController::class, 'purchaseRequest']);
-    Route::post('/check-credit', [PayWithNodopayController::class, 'checkCredit']);
-    Route::get('/customer', [PayWithNodopayController::class, 'getCustomerDetails']);
+// Pay with FSCredit API (External Integration)
+Route::prefix('pay-with-fscredit')->middleware('api.token')->group(function () {
+    Route::post('/purchase', [PayWithFscreditController::class, 'purchaseRequest']);
+    Route::post('/check-credit', [PayWithFscreditController::class, 'checkCredit']);
+    Route::get('/customer', [PayWithFscreditController::class, 'getCustomerDetails']);
 });
 
 // Payment Processing Routes

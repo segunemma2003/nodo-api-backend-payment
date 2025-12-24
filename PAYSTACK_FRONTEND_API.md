@@ -2,7 +2,7 @@
 
 ## Base URL
 ```
-https://nodopay-api-0fbd4546e629.herokuapp.com/api
+https://fscredit-api-0fbd4546e629.herokuapp.com/api
 ```
 
 ---
@@ -26,7 +26,7 @@ https://nodopay-api-0fbd4546e629.herokuapp.com/api
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -40,7 +40,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-acc
 
 **Request (with refresh):**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?refresh=true', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account?refresh=true', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -81,7 +81,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-acc
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/refresh', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/refresh', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -157,7 +157,7 @@ async function refreshVirtualAccount() {
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/generate', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/generate', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -262,7 +262,7 @@ async function checkVirtualAccountStatus() {
 
 **Configuration:** Set webhook URL in Paystack dashboard:
 ```
-https://nodopay-api-0fbd4546e629.herokuapp.com/api/payments/webhook/paystack
+https://fscredit-api-0fbd4546e629.herokuapp.com/api/payments/webhook/paystack
 ```
 
 ---
@@ -275,7 +275,7 @@ https://nodopay-api-0fbd4546e629.herokuapp.com/api/payments/webhook/paystack
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/payments/history/1', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/payments/history/1', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer ADMIN_TOKEN',
@@ -326,7 +326,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/payments/history/1', {
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transactions?type=payment&page=1', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/transactions?type=payment&page=1', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -375,7 +375,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transactions?
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/dashboard', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/dashboard', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_CUSTOMER_TOKEN',
@@ -429,7 +429,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/dashboard', {
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/customers/1/generate-virtual-account', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/admin/customers/1/generate-virtual-account', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer ADMIN_TOKEN',
@@ -468,7 +468,7 @@ fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/customers/1/gene
 
 **Request:**
 ```javascript
-fetch('https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/customers/generate-virtual-accounts-all', {
+fetch('https://fscredit-api-0fbd4546e629.herokuapp.com/api/admin/customers/generate-virtual-accounts-all', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer ADMIN_TOKEN',
@@ -529,7 +529,7 @@ async function generateVirtualAccountsForAll() {
 
 2. **Add Webhook URL:**
    ```
-   https://nodopay-api-0fbd4546e629.herokuapp.com/api/payments/webhook/paystack
+   https://fscredit-api-0fbd4546e629.herokuapp.com/api/payments/webhook/paystack
    ```
 
 3. **Select Events to Listen For:**
@@ -787,26 +787,26 @@ If you have old failed jobs in the queue, you can clear them:
 
 ```bash
 # View failed jobs
-heroku run php artisan queue:failed --app nodopay-api
+heroku run php artisan queue:failed --app fscredit-api
 
 # Clear all failed jobs
-heroku run php artisan queue:flush --app nodopay-api
+heroku run php artisan queue:flush --app fscredit-api
 
 # Retry specific failed job
-heroku run php artisan queue:retry {job-id} --app nodopay-api
+heroku run php artisan queue:retry {job-id} --app fscredit-api
 
 # Retry all failed jobs
-heroku run php artisan queue:retry all --app nodopay-api
+heroku run php artisan queue:retry all --app fscredit-api
 ```
 
 ### Check Queue Status
 
 ```bash
 # View queue status
-heroku logs --tail --app nodopay-api | grep -i queue
+heroku logs --tail --app fscredit-api | grep -i queue
 
 # Check worker status
-heroku ps --app nodopay-api
+heroku ps --app fscredit-api
 ```
 
 ---

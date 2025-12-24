@@ -24,7 +24,7 @@ class ApiToken extends Model
 
     public static function generateToken(): string
     {
-        return 'nodo_' . bin2hex(random_bytes(32));
+        return 'fscredit_' . bin2hex(random_bytes(32));
     }
 }
 

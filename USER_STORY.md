@@ -1,7 +1,7 @@
-# NodoPay User Stories
+# FSCredit User Stories
 
 ## Overview
-NodoPay is a credit financing platform that connects businesses, customers, and administrators. The system supports two types of customers:
+FSCredit is a credit financing platform that connects businesses, customers, and administrators. The system supports two types of customers:
 1. **Main Customers** - Registered users with login credentials (require admin approval)
 2. **Business Customers** - Customer records created by businesses (no login, just for invoice management)
 
@@ -10,7 +10,7 @@ NodoPay is a credit financing platform that connects businesses, customers, and 
 ## User Story 1: Main Customer Registration & Approval
 
 ### As a Customer
-I want to register for a NodoPay account so that I can access credit financing services.
+I want to register for a FSCredit account so that I can access credit financing services.
 
 **Acceptance Criteria:**
 - Customer can register with business_name, email, username, password

@@ -11,31 +11,21 @@ class RepaymentReminderService
     public function sendReminders(): void
     {
         $today = Carbon::today();
+        $oneWeekFromToday = $today->copy()->addWeek();
         
+        // Find invoices with due_date exactly 7 days from today (1 week before due date)
         $invoices = Invoice::where('status', '!=', 'paid')
-            ->where(function ($query) use ($today) {
-                $query->where(function ($q) use ($today) {
-                    $q->whereNotNull('due_date')
-                      ->where('due_date', '<=', $today->copy()->addDays(7));
-                })
-                ->orWhere('status', 'overdue');
-            })
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', $oneWeekFromToday->format('Y-m-d'))
+            ->whereNotNull('customer_id')
             ->with('customer')
             ->get();
 
         foreach ($invoices as $invoice) {
-            // Skip invoices without due_date
-            if (!$invoice->due_date) {
-                continue;
-            }
-
-            $daysUntilDue = $today->diffInDays($invoice->due_date, false);
-            $isOverdue = $invoice->status === 'overdue';
-            
-            if ($isOverdue || ($daysUntilDue <= 7 && $daysUntilDue >= 0)) {
+            // Only send reminder if customer exists
+            if ($invoice->customer) {
                 $invoice->customer->notify(new RepaymentReminderNotification($invoice));
             }
         }
     }
 }
-

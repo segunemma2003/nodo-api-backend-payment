@@ -42,14 +42,14 @@ class PaymentSuccessNotification extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('Payment Successful - Invoice ' . $this->invoice->invoice_id)
             ->greeting('Hello ' . $notifiable->business_name . '!')
-            ->line('A payment has been successfully processed through Nodopay.')
+            ->line('A payment has been successfully processed through FSCredit.')
             ->line('**Invoice ID:** ' . $this->invoice->invoice_id)
             ->line('**Amount:** ₦' . number_format($this->amount, 2))
             ->line('**Customer:** ' . $this->invoice->customer->business_name)
             ->line('**Due Date:** ' . $this->invoice->due_date->format('F d, Y'))
             ->line('Payment has been automatically transferred to your account.')
             ->action('View Invoice', url('/invoices/' . $this->invoice->invoice_id))
-            ->line('Thank you for using Nodopay!');
+            ->line('Thank you for using FSCredit!');
     }
 
     protected function repaymentMail($notifiable)

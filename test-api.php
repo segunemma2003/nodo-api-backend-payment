@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Nodopay API Testing Script
+ * FSCredit API Testing Script
  * Run: php test-api.php
  */
 
 $baseUrl = 'http://localhost:8000/api';
 
-echo "=== Nodopay API Testing Script ===\n\n";
+echo "=== FSCredit API Testing Script ===\n\n";
 
 // Helper function to make API requests
 function makeRequest($method, $url, $data = null, $headers = []) {
@@ -60,7 +60,7 @@ echo "\n";
 // Test 3: Admin Login
 echo "Test 3: Admin Login\n";
 $response = makeRequest('POST', "$baseUrl/auth/admin/login", [
-    'email' => 'admin@nodopay.com',
+    'email' => 'admin@fscredit.com',
     'password' => 'admin_password'
 ]);
 echo "Status: {$response['code']}\n";
@@ -96,9 +96,9 @@ echo "Status: {$response['code']}\n";
 print_r($response['body']);
 echo "\n";
 
-// Test 8: Check Customer Credit (Pay with Nodopay)
+// Test 8: Check Customer Credit (Pay with FSCredit)
 echo "Test 8: Check Customer Credit\n";
-$response = makeRequest('POST', "$baseUrl/pay-with-nodopay/check-credit", [
+$response = makeRequest('POST', "$baseUrl/pay-with-fscredit/check-credit", [
     'customer_id' => 1,
     'amount' => 50000.00
 ], ['X-API-Token' => $businessApiToken]);
@@ -106,9 +106,9 @@ echo "Status: {$response['code']}\n";
 print_r($response['body']);
 echo "\n";
 
-// Test 9: Purchase Request (Pay with Nodopay)
+// Test 9: Purchase Request (Pay with FSCredit)
 echo "Test 9: Purchase Request\n";
-$response = makeRequest('POST', "$baseUrl/pay-with-nodopay/purchase", [
+$response = makeRequest('POST', "$baseUrl/pay-with-fscredit/purchase", [
     'customer_id' => 1,
     'customer_email' => 'customer@example.com',
     'amount' => 50000.00,
@@ -133,9 +133,9 @@ echo "Status: {$response['code']}\n";
 print_r($response['body']);
 echo "\n";
 
-// Test 10: Get Customer Details (Pay with Nodopay)
+// Test 10: Get Customer Details (Pay with FSCredit)
 echo "Test 10: Get Customer Details\n";
-$response = makeRequest('GET', "$baseUrl/pay-with-nodopay/customer?customer_id=1&customer_email=customer@example.com", null, ['X-API-Token' => $businessApiToken]);
+$response = makeRequest('GET', "$baseUrl/pay-with-fscredit/customer?customer_id=1&customer_email=customer@example.com", null, ['X-API-Token' => $businessApiToken]);
 echo "Status: {$response['code']}\n";
 print_r($response['body']);
 echo "\n";

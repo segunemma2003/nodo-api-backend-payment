@@ -59,6 +59,11 @@ class Business extends Authenticatable
         return $this->hasMany(Withdrawal::class);
     }
 
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+
     public function getAvailableBalance(): float
     {
         // Calculate total revenue from invoices (including interest)
@@ -90,7 +95,7 @@ class Business extends Authenticatable
 
     public function generateApiToken(): string
     {
-        $token = 'nodo_biz_' . bin2hex(random_bytes(32));
+        $token = 'fscredit_biz_' . bin2hex(random_bytes(32));
         $this->api_token = $token;
         $this->save();
         return $token;

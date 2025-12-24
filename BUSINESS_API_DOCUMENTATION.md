@@ -843,7 +843,7 @@ Authorization: Bearer YOUR_API_TOKEN
 ```json
 {
   "message": "Invoice link generated successfully",
-  "invoice_link": "https://nodopay.com/checkout/inv-abc123xyz",
+  "invoice_link": "https://fscredit.com/checkout/inv-abc123xyz",
   "slug": "inv-abc123xyz",
   "invoice": {
     "id": 1,
@@ -859,6 +859,371 @@ Authorization: Bearer YOUR_API_TOKEN
 - Invoice links are one-time use only
 - Link format: `{FRONTEND_URL}/checkout/{slug}`
 - Once used for payment, the link cannot be reused
+
+---
+
+## 📦 Product Management
+
+### 17. Get All Products
+**GET** `/api/business/products`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**Query Parameters (Optional):**
+- `is_active` (boolean): Filter by active status (true/false)
+- `search` (string): Search by name, SKU, or description
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products?is_active=true&search=rice" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "products": [
+    {
+      "id": 1,
+      "business_id": 1,
+      "name": "Premium Rice 50kg",
+      "description": "High quality premium rice",
+      "sku": "RICE-50KG-001",
+      "price": "5000.00",
+      "unit_of_measure": "bag",
+      "is_active": true,
+      "created_at": "2024-01-15T10:00:00.000000Z",
+      "updated_at": "2024-01-15T10:00:00.000000Z"
+    },
+    {
+      "id": 2,
+      "business_id": 1,
+      "name": "Cooking Oil 5L",
+      "description": "Premium cooking oil",
+      "sku": "OIL-5L-001",
+      "price": "3000.00",
+      "unit_of_measure": "bottle",
+      "is_active": true,
+      "created_at": "2024-01-15T11:00:00.000000Z",
+      "updated_at": "2024-01-15T11:00:00.000000Z"
+    }
+  ],
+  "count": 2
+}
+```
+
+---
+
+### 18. Create Single Product
+**POST** `/api/business/products`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "name": "Premium Rice 50kg",
+  "description": "High quality premium rice",
+  "sku": "RICE-50KG-001",
+  "price": 5000.00,
+  "unit_of_measure": "bag",
+  "is_active": true
+}
+```
+
+**Required Fields:**
+- `name` (string, max 255): Product name
+- `price` (numeric, min: 0.01): Product price
+
+**Optional Fields:**
+- `description` (string): Product description
+- `sku` (string, max 255): Stock Keeping Unit (must be unique per business)
+- `unit_of_measure` (string, max 50): Unit of measure (e.g., "bag", "kg", "pieces", "liters", "bottles")
+- `is_active` (boolean): Whether the product is active (default: true)
+
+**Request:**
+```bash
+curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Premium Rice 50kg",
+    "description": "High quality premium rice",
+    "sku": "RICE-50KG-001",
+    "price": 5000.00,
+    "unit_of_measure": "bag",
+    "is_active": true
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "Product created successfully",
+  "product": {
+    "id": 1,
+    "business_id": 1,
+    "name": "Premium Rice 50kg",
+    "description": "High quality premium rice",
+    "sku": "RICE-50KG-001",
+    "price": "5000.00",
+    "unit_of_measure": "bag",
+    "is_active": true,
+    "created_at": "2024-01-15T10:00:00.000000Z",
+    "updated_at": "2024-01-15T10:00:00.000000Z"
+  }
+}
+```
+
+**Error Response (422 Validation Error):**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "sku": ["The sku has already been taken."]
+  }
+}
+```
+
+---
+
+### 19. Create Products in Bulk
+**POST** `/api/business/products/bulk`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "products": [
+    {
+      "name": "Premium Rice 50kg",
+      "description": "High quality premium rice",
+      "sku": "RICE-50KG-001",
+      "price": 5000.00,
+      "unit_of_measure": "bag",
+      "is_active": true
+    },
+    {
+      "name": "Cooking Oil 5L",
+      "description": "Premium cooking oil",
+      "sku": "OIL-5L-001",
+      "price": 3000.00,
+      "unit_of_measure": "bottle",
+      "is_active": true
+    },
+    {
+      "name": "Wheat Flour 25kg",
+      "description": "Premium wheat flour",
+      "sku": "FLOUR-25KG-001",
+      "price": 4500.00,
+      "unit_of_measure": "bag"
+    }
+  ]
+}
+```
+
+**Request:**
+```bash
+curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products/bulk" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "products": [
+      {
+        "name": "Premium Rice 50kg",
+        "description": "High quality premium rice",
+        "sku": "RICE-50KG-001",
+        "price": 5000.00,
+        "unit_of_measure": "bag",
+        "is_active": true
+      },
+      {
+        "name": "Cooking Oil 5L",
+        "price": 3000.00,
+        "unit_of_measure": "bottle"
+      }
+    ]
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "2 products created successfully",
+  "count": 2
+}
+```
+
+**Error Response (422 Validation Error):**
+```json
+{
+  "success": false,
+  "message": "Validation errors found",
+  "errors": [
+    "Duplicate SKU 'RICE-50KG-001' found in batch (product index: 1)",
+    "SKU 'OIL-5L-001' already exists (product index: 2)"
+  ]
+}
+```
+
+**⚠️ Important Notes:**
+- Maximum 100 products per bulk request
+- SKU must be unique within your business (cannot duplicate existing SKUs)
+- SKU cannot be duplicated within the same batch
+- All products are validated before any are created (transactional)
+- If any product fails validation, no products are created
+
+**Required Fields per Product:**
+- `name` (string, max 255): Product name
+- `price` (numeric, min: 0.01): Product price
+
+**Optional Fields per Product:**
+- `description` (string): Product description
+- `sku` (string, max 255): Stock Keeping Unit (must be unique per business)
+- `unit_of_measure` (string, max 50): Unit of measure
+- `is_active` (boolean): Whether the product is active (default: true)
+
+---
+
+### 20. Get Single Product
+**GET** `/api/business/products/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**URL Parameters:**
+- `id`: Product ID
+
+**Request:**
+```bash
+curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products/1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "product": {
+    "id": 1,
+    "business_id": 1,
+    "name": "Premium Rice 50kg",
+    "description": "High quality premium rice",
+    "sku": "RICE-50KG-001",
+    "price": "5000.00",
+    "unit_of_measure": "bag",
+    "is_active": true,
+    "created_at": "2024-01-15T10:00:00.000000Z",
+    "updated_at": "2024-01-15T10:00:00.000000Z"
+  }
+}
+```
+
+---
+
+### 21. Update Product
+**PUT** `/api/business/products/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+```
+
+**URL Parameters:**
+- `id`: Product ID
+
+**Request Body (all fields optional, only include fields to update):**
+```json
+{
+  "name": "Updated Product Name",
+  "description": "Updated description",
+  "sku": "NEW-SKU-001",
+  "price": 5500.00,
+  "unit_of_measure": "bag",
+  "is_active": false
+}
+```
+
+**Request:**
+```bash
+curl -X PUT "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products/1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "price": 5500.00,
+    "is_active": false
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Product updated successfully",
+  "product": {
+    "id": 1,
+    "business_id": 1,
+    "name": "Premium Rice 50kg",
+    "description": "High quality premium rice",
+    "sku": "RICE-50KG-001",
+    "price": "5500.00",
+    "unit_of_measure": "bag",
+    "is_active": false,
+    "created_at": "2024-01-15T10:00:00.000000Z",
+    "updated_at": "2024-01-15T12:00:00.000000Z"
+  }
+}
+```
+
+---
+
+### 22. Delete Product
+**DELETE** `/api/business/products/{id}`
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_TOKEN
+```
+
+**URL Parameters:**
+- `id`: Product ID
+
+**Request:**
+```bash
+curl -X DELETE "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/products/1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Product deleted successfully"
+}
+```
+
+**⚠️ Important Notes:**
+- You can only manage products that belong to your business
+- Deleting a product is permanent and cannot be undone
+- Consider setting `is_active: false` instead of deleting if you want to keep historical data
 
 ---
 
@@ -941,7 +1306,7 @@ curl -X GET https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/profile 
    - Your business needs admin approval first
 
 4. **Check Token Format:**
-   - Should start with `nodo_biz_`
+   - Should start with `fscredit_biz_`
    - Should be at least 64 characters long
    - No spaces or special characters (except underscore)
 

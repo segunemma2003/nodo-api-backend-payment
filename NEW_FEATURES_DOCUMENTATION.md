@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines all new features, API endpoints, and changes made to the Nodopay API system.
+This document outlines all new features, API endpoints, and changes made to the FSCredit API system.
 
 ---
 

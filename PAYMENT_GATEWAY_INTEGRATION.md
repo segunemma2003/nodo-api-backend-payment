@@ -1,4 +1,4 @@
-# Nodopay Payment Gateway Integration Guide
+# FSCredit Payment Gateway Integration Guide
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -16,7 +16,7 @@
 
 ## Overview
 
-Nodopay Payment Gateway allows businesses to offer invoice financing to their customers. When customers choose "Pay with Nodopay", the system:
+FSCredit Payment Gateway allows businesses to offer invoice financing to their customers. When customers choose "Pay with FSCredit", the system:
 
 - Validates customer credit availability
 - Creates invoice automatically
@@ -37,7 +37,7 @@ Nodopay Payment Gateway allows businesses to offer invoice financing to their cu
 
 ### Step 1: Register Your Business
 
-Contact Nodopay admin to register your business. You'll need to provide:
+Contact FSCredit admin to register your business. You'll need to provide:
 - Business name and contact information
 - KYC documents
 - Webhook URL (optional, for receiving notifications)
@@ -82,11 +82,11 @@ Or as a query parameter:
 
 ### Step 1: Check Customer Credit (Before Checkout)
 
-Before allowing customer to proceed with "Pay with Nodopay", check if they have sufficient credit.
+Before allowing customer to proceed with "Pay with FSCredit", check if they have sufficient credit.
 
 **Important**: Customers will enter their **16-digit account number** at checkout, not their customer ID. The account number is a unique identifier assigned to each customer when their account is created.
 
-**Endpoint**: `POST /api/pay-with-nodopay/check-credit`
+**Endpoint**: `POST /api/pay-with-fscredit/check-credit`
 
 **Request**:
 ```json
@@ -111,9 +111,9 @@ Before allowing customer to proceed with "Pay with Nodopay", check if they have 
 
 **Integration Example**:
 ```javascript
-// Check credit before showing "Pay with Nodopay" option
-async function checkNodopayCredit(accountNumber, amount) {
-  const response = await fetch('https://api.nodopay.com/api/pay-with-nodopay/check-credit', {
+// Check credit before showing "Pay with FSCredit" option
+async function checkFSCreditCredit(accountNumber, amount) {
+  const response = await fetch('https://api.fscredit.com/api/pay-with-fscredit/check-credit', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -126,17 +126,17 @@ async function checkNodopayCredit(accountNumber, amount) {
   });
   
   const data = await response.json();
-  return data.has_credit; // Show "Pay with Nodopay" if true
+  return data.has_credit; // Show "Pay with FSCredit" if true
 }
 ```
 
 ---
 
-### Step 2: Process Purchase with Nodopay
+### Step 2: Process Purchase with FSCredit
 
-When customer clicks "Pay with Nodopay", call the purchase endpoint.
+When customer clicks "Pay with FSCredit", call the purchase endpoint.
 
-**Endpoint**: `POST /api/pay-with-nodopay/purchase`
+**Endpoint**: `POST /api/pay-with-fscredit/purchase`
 
 **Request**:
 ```json
@@ -207,10 +207,10 @@ When customer clicks "Pay with Nodopay", call the purchase endpoint.
 
 **Integration Example**:
 ```javascript
-// Process purchase with Nodopay
-async function processNodopayPayment(orderData) {
+// Process purchase with FSCredit
+async function processFSCreditPayment(orderData) {
   try {
-    const response = await fetch('https://api.nodopay.com/api/pay-with-nodopay/purchase', {
+    const response = await fetch('https://api.fscredit.com/api/pay-with-fscredit/purchase', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -252,7 +252,7 @@ async function processNodopayPayment(orderData) {
 
 You can retrieve customer credit information to display to customers.
 
-**Endpoint**: `GET /api/pay-with-nodopay/customer?account_number=1234567890123456&customer_email=customer@example.com`
+**Endpoint**: `GET /api/pay-with-fscredit/customer?account_number=1234567890123456&customer_email=customer@example.com`
 
 **Query Parameters**:
 - `account_number` (required): 16-digit customer account number
@@ -283,18 +283,18 @@ You can retrieve customer credit information to display to customers.
 ### Frontend Integration
 
 ```javascript
-// 1. On checkout page, check if customer has Nodopay account
-async function showNodopayOption(accountNumber, orderTotal) {
-  const hasCredit = await checkNodopayCredit(accountNumber, orderTotal);
+// 1. On checkout page, check if customer has FSCredit account
+async function showFSCreditOption(accountNumber, orderTotal) {
+  const hasCredit = await checkFSCreditCredit(accountNumber, orderTotal);
   
   if (hasCredit) {
-    // Show "Pay with Nodopay" button
-    document.getElementById('nodopay-button').style.display = 'block';
+    // Show "Pay with FSCredit" button
+    document.getElementById('fscredit-button').style.display = 'block';
   }
 }
 
-// 2. When customer clicks "Pay with Nodopay"
-document.getElementById('nodopay-button').addEventListener('click', async () => {
+// 2. When customer clicks "Pay with FSCredit"
+document.getElementById('fscredit-button').addEventListener('click', async () => {
   const orderData = {
     accountNumber: getAccountNumber(),
     customerEmail: getCustomerEmail(),
@@ -307,7 +307,7 @@ document.getElementById('nodopay-button').addEventListener('click', async () => 
   showLoading();
   
   // Process payment
-  const invoice = await processNodopayPayment(orderData);
+  const invoice = await processFSCreditPayment(orderData);
   
   if (invoice) {
     // Payment successful
@@ -326,12 +326,12 @@ document.getElementById('nodopay-button').addEventListener('click', async () => 
 ```php
 <?php
 
-class NodopayIntegration {
+class FSCreditIntegration {
     private $apiToken = 'nodo_biz_your_api_token_here';
-    private $baseUrl = 'https://api.nodopay.com/api';
+    private $baseUrl = 'https://api.fscredit.com/api';
     
     public function checkCredit($accountNumber, $amount) {
-        $response = $this->makeRequest('POST', '/pay-with-nodopay/check-credit', [
+        $response = $this->makeRequest('POST', '/pay-with-fscredit/check-credit', [
             'account_number' => $accountNumber,
             'amount' => $amount
         ]);
@@ -340,7 +340,7 @@ class NodopayIntegration {
     }
     
     public function processPurchase($accountNumber, $customerEmail, $amount, $orderReference, $items = []) {
-        $response = $this->makeRequest('POST', '/pay-with-nodopay/purchase', [
+        $response = $this->makeRequest('POST', '/pay-with-fscredit/purchase', [
             'account_number' => $accountNumber,
             'customer_email' => $customerEmail,
             'amount' => $amount,
@@ -376,15 +376,15 @@ class NodopayIntegration {
 }
 
 // Usage
-$nodopay = new NodopayIntegration();
+$fscredit = new FSCreditIntegration();
 
 // Check credit before checkout
-if ($nodopay->checkCredit($accountNumber, $orderTotal)) {
-    // Show "Pay with Nodopay" option
+if ($fscredit->checkCredit($accountNumber, $orderTotal)) {
+    // Show "Pay with FSCredit" option
 }
 
 // Process payment
-$result = $nodopay->processPurchase(
+$result = $fscredit->processPurchase(
     $accountNumber,
     $customerEmail,
     $orderTotal,
@@ -404,7 +404,7 @@ if ($result['success']) {
 
 ### Setting Up Webhooks
 
-Configure your webhook URL in your business profile. Nodopay will send HTTP POST requests to this URL for:
+Configure your webhook URL in your business profile. FSCredit will send HTTP POST requests to this URL for:
 
 - Invoice creation
 - Payment confirmations
@@ -502,7 +502,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
 
 **Important**: Always validate webhook requests:
 
-1. Verify the request comes from Nodopay IP addresses
+1. Verify the request comes from FSCredit IP addresses
 2. Check webhook signature (if implemented)
 3. Validate event structure
 4. Handle duplicate events (idempotency)
@@ -512,7 +512,7 @@ Configure your webhook URL in your business profile. Nodopay will send HTTP POST
 <?php
 
 // Webhook endpoint on your server
-function handleNodopayWebhook() {
+function handleFSCreditWebhook() {
     $payload = json_decode(file_get_contents('php://input'), true);
     
     // Validate event structure
@@ -576,7 +576,7 @@ function handleNodopayWebhook() {
 }
 ```
 
-**Action**: Customer needs to activate their Nodopay account or contact support.
+**Action**: Customer needs to activate their FSCredit account or contact support.
 
 ---
 
@@ -600,7 +600,7 @@ function handleNodopayWebhook() {
 }
 ```
 
-**Action**: Contact Nodopay admin to get your business approved.
+**Action**: Contact FSCredit admin to get your business approved.
 
 ---
 
@@ -616,7 +616,7 @@ Use test customer IDs and amounts to test integration:
 - Amount: Use small amounts for testing
 
 **Test Flow**:
-1. Create test customer in Nodopay admin panel
+1. Create test customer in FSCredit admin panel
 2. Use test customer's account_number in your integration
 3. Test credit check endpoint
 4. Test purchase endpoint with small amounts
@@ -638,13 +638,13 @@ Use test customer IDs and amounts to test integration:
 
 ### 1. Always Check Credit First
 
-Before showing "Pay with Nodopay" option, check credit availability:
+Before showing "Pay with FSCredit" option, check credit availability:
 
 ```javascript
 // Good practice
-const hasCredit = await checkNodopayCredit(accountNumber, orderTotal);
+const hasCredit = await checkFSCreditCredit(accountNumber, orderTotal);
 if (hasCredit) {
-  showNodopayOption();
+  showFSCreditOption();
 }
 ```
 
@@ -654,7 +654,7 @@ Always handle API errors and show user-friendly messages:
 
 ```javascript
 try {
-  const result = await processNodopayPayment(orderData);
+  const result = await processFSCreditPayment(orderData);
   if (!result.success) {
     showErrorMessage(result.message);
   }
@@ -669,7 +669,7 @@ try {
 Store the returned invoice ID for reference:
 
 ```javascript
-const invoice = await processNodopayPayment(orderData);
+const invoice = await processFSCreditPayment(orderData);
 if (invoice) {
   // Store invoice_id with your order
   saveOrderInvoice(orderId, invoice.invoice_id);
@@ -709,7 +709,7 @@ For critical operations, use idempotency keys to prevent duplicate processing:
 
 ```javascript
 const idempotencyKey = generateUniqueId();
-const result = await processNodopayPayment(orderData, idempotencyKey);
+const result = await processFSCreditPayment(orderData, idempotencyKey);
 ```
 
 ---
@@ -735,9 +735,9 @@ Before going live:
 ## Support
 
 For integration support:
-- Email: integration-support@nodopay.com
-- Documentation: https://docs.nodopay.com
-- API Status: https://status.nodopay.com
+- Email: integration-support@fscredit.com
+- Documentation: https://docs.fscredit.com
+- API Status: https://status.fscredit.com
 
 ---
 
@@ -745,7 +745,7 @@ For integration support:
 
 ### Base URL
 ```
-https://api.nodopay.com/api
+https://api.fscredit.com/api
 ```
 
 ### Authentication Header
@@ -754,9 +754,9 @@ X-API-Token: nodo_biz_your_api_token_here
 ```
 
 ### Key Endpoints
-- Check Credit: `POST /pay-with-nodopay/check-credit`
-- Process Purchase: `POST /pay-with-nodopay/purchase`
-- Get Customer: `GET /pay-with-nodopay/customer`
+- Check Credit: `POST /pay-with-fscredit/check-credit`
+- Process Purchase: `POST /pay-with-fscredit/purchase`
+- Get Customer: `GET /pay-with-fscredit/customer`
 
 ### Response Times
 - Average: < 200ms
@@ -769,10 +769,10 @@ X-API-Token: nodo_biz_your_api_token_here
 
 ```javascript
 // Complete integration example
-class NodopayCheckout {
+class FSCreditCheckout {
   constructor(apiToken) {
     this.apiToken = apiToken;
-    this.baseUrl = 'https://api.nodopay.com/api';
+    this.baseUrl = 'https://api.fscredit.com/api';
   }
   
   async initializeCheckout(accountNumber, orderTotal) {
@@ -796,7 +796,7 @@ class NodopayCheckout {
   
   async processPayment(accountNumber, customerEmail, amount, orderId, items = []) {
     try {
-      const response = await fetch(`${this.baseUrl}/pay-with-nodopay/purchase`, {
+      const response = await fetch(`${this.baseUrl}/pay-with-fscredit/purchase`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -836,7 +836,7 @@ class NodopayCheckout {
   }
   
   async checkCredit(accountNumber, amount) {
-    const response = await fetch(`${this.baseUrl}/pay-with-nodopay/check-credit`, {
+    const response = await fetch(`${this.baseUrl}/pay-with-fscredit/check-credit`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -853,16 +853,16 @@ class NodopayCheckout {
 }
 
 // Usage
-const nodopay = new NodopayCheckout('nodo_biz_your_api_token_here');
+const fscredit = new FSCreditCheckout('nodo_biz_your_api_token_here');
 
 // On checkout page load
-const checkout = await nodopay.initializeCheckout(accountNumber, orderTotal);
+const checkout = await fscredit.initializeCheckout(accountNumber, orderTotal);
 if (checkout.available) {
-  showNodopayButton();
+  showFSCreditButton();
 }
 
-// On "Pay with Nodopay" click
-const result = await nodopay.processPayment(
+// On "Pay with FSCredit" click
+const result = await fscredit.processPayment(
   accountNumber,
   customerEmail,
   orderTotal,

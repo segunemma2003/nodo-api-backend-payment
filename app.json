@@ -1,8 +1,8 @@
 {
-  "name": "Nodopay API",
-  "description": "Nodopay financing platform API",
-  "repository": "https://github.com/yourusername/nodopay-api",
-  "keywords": ["laravel", "api", "financing", "nodopay"],
+  "name": "FSCredit API",
+  "description": "FSCredit financing platform API",
+  "repository": "https://github.com/yourusername/fscredit-api",
+  "keywords": ["laravel", "api", "financing", "fscredit"],
   "success_url": "/api/up",
   "env": {
     "APP_ENV": {
@@ -75,7 +75,7 @@
     },
     "MAIL_FROM_NAME": {
       "description": "Mail from name",
-      "value": "Nodopay"
+      "value": "FSCredit"
     }
   },
   "formation": {

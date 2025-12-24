@@ -105,11 +105,38 @@ class BusinessController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        // Add items and description to each invoice
+        // Transform invoices - businesses only see principal_amount, no interest
         $invoices->getCollection()->transform(function ($invoice) {
-            $invoice->items = $invoice->getItems();
-            $invoice->description = $invoice->getDescription();
-            return $invoice;
+            return [
+                'id' => $invoice->id,
+                'invoice_id' => $invoice->invoice_id,
+                'slug' => $invoice->slug,
+                'customer_id' => $invoice->customer_id,
+                'business_customer_id' => $invoice->business_customer_id,
+                'supplier_id' => $invoice->supplier_id,
+                'supplier_name' => $invoice->supplier_name,
+                'principal_amount' => $invoice->principal_amount,
+                'paid_amount' => $invoice->paid_amount,
+                'remaining_balance' => $invoice->principal_amount - $invoice->paid_amount, // Only principal for businesses
+                'purchase_date' => $invoice->purchase_date ? $invoice->purchase_date->format('Y-m-d') : null,
+                'payment_plan_duration' => $invoice->payment_plan_duration,
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                'status' => $invoice->status,
+                'created_at' => $invoice->created_at ? $invoice->created_at->toISOString() : null,
+                'updated_at' => $invoice->updated_at ? $invoice->updated_at->toISOString() : null,
+                'customer' => $invoice->customer ? [
+                    'id' => $invoice->customer->id,
+                    'business_name' => $invoice->customer->business_name,
+                    'account_number' => $invoice->customer->account_number,
+                ] : null,
+                'business_customer' => $invoice->businessCustomer ? [
+                    'id' => $invoice->businessCustomer->id,
+                    'name' => $invoice->businessCustomer->name,
+                    'email' => $invoice->businessCustomer->email,
+                ] : null,
+                'items' => $invoice->getItems(),
+                'description' => $invoice->getDescription(),
+            ];
         });
 
         return response()->json($invoices);
@@ -501,7 +528,7 @@ class BusinessController extends Controller
             $invoice->save();
         }
 
-        $frontendUrl = env('FRONTEND_URL', env('APP_URL', 'https://nodopay.com'));
+        $frontendUrl = env('FRONTEND_URL', env('APP_URL', 'https://fscredit.com'));
         $invoiceLink = rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug;
 
         return response()->json([

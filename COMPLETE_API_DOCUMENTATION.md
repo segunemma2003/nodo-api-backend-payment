@@ -14,7 +14,7 @@
 
 ## Overview
 
-This document covers all new features and updates to the Nodopay API, including:
+This document covers all new features and updates to the FSCredit API, including:
 - Credit repayment status tracking on invoices
 - Enhanced transaction endpoints (customer, business, admin)
 - Admin ability to add credits to customer wallets
@@ -74,7 +74,7 @@ All invoice responses now include:
 
 **Example Request:**
 ```bash
-curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transactions?customer_id=1&type=transaction&date_from=2024-01-01" \
+curl -X GET "https://fscredit-api-0fbd4546e629.herokuapp.com/api/customer/transactions?customer_id=1&type=transaction&date_from=2024-01-01" \
   -H "Content-Type: application/json"
 ```
 
@@ -169,7 +169,7 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/transac
 
 **Example Request:**
 ```bash
-curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/transactions?type=transaction" \
+curl -X GET "https://fscredit-api-0fbd4546e629.herokuapp.com/api/business/transactions?type=transaction" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json"
 ```
@@ -269,7 +269,7 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/business/transac
 
 **Example Request:**
 ```bash
-curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/transactions/all?customer_id=1&type=transaction" \
+curl -X GET "https://fscredit-api-0fbd4546e629.herokuapp.com/api/admin/transactions/all?customer_id=1&type=transaction" \
   -H "Authorization: Bearer ADMIN_TOKEN" \
   -H "Content-Type: application/json"
 ```
@@ -301,7 +301,7 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/transactio
 
 **Example Request:**
 ```bash
-curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/admin/customers/1/add-credits" \
+curl -X POST "https://fscredit-api-0fbd4546e629.herokuapp.com/api/admin/customers/1/add-credits" \
   -H "Authorization: Bearer ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

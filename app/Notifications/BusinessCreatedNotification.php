@@ -26,9 +26,9 @@ class BusinessCreatedNotification extends Notification implements ShouldQueue
     public function toMail($notifiable)
     {
         $mail = (new MailMessage)
-            ->subject('Welcome to Nodopay - Your Business Account Details')
+            ->subject('Welcome to FSCredit - Your Business Account Details')
             ->greeting('Hello ' . $notifiable->business_name . '!')
-            ->line('Your Nodopay business account has been created successfully.')
+            ->line('Your FSCredit business account has been created successfully.')
             ->line('**Username:** ' . $notifiable->username)
             ->line('**Email:** ' . $notifiable->email);
 
@@ -40,7 +40,7 @@ class BusinessCreatedNotification extends Notification implements ShouldQueue
             $mail->line('Your account is pending approval. You will be notified once it is approved.');
         } elseif ($notifiable->approval_status === 'approved') {
             $mail->line('**API Token:** ' . $notifiable->api_token)
-                ->line('You can now integrate Nodopay payment gateway into your platform.');
+                ->line('You can now integrate FSCredit payment gateway into your platform.');
         }
 
         if ($this->password) {
@@ -48,7 +48,7 @@ class BusinessCreatedNotification extends Notification implements ShouldQueue
         }
 
         $mail->action('Login to Dashboard', url('/login'))
-            ->line('Thank you for choosing Nodopay!');
+            ->line('Thank you for choosing FSCredit!');
 
         return $mail;
     }

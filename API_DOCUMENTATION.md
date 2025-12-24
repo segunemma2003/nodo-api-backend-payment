@@ -1,4 +1,4 @@
-# NODOPAY API Documentation
+# FSCREDIT API Documentation
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -15,7 +15,7 @@
 
 ## Overview
 
-Nodopay is a financing platform that provides credit lines and invoice financing for businesses. This API enables:
+FSCredit is a financing platform that provides credit lines and invoice financing for businesses. This API enables:
 
 - Customer credit management with 16-digit account numbers
 - Business payment gateway integration
@@ -29,7 +29,7 @@ Nodopay is a financing platform that provides credit lines and invoice financing
 ## Base URL
 
 ```
-https://nodopay-api-0fbd4546e629.herokuapp.com/api
+https://fscredit-api-0fbd4546e629.herokuapp.com/api
 ```
 
 All endpoints are prefixed with `/api`.
@@ -94,7 +94,7 @@ All endpoints are prefixed with `/api`.
 **Request Body:**
 ```json
 {
-  "email": "admin@nodopay.com",
+  "email": "admin@fscredit.com",
   "password": "admin_password"
 }
 ```
@@ -105,7 +105,7 @@ All endpoints are prefixed with `/api`.
   "admin": {
     "id": 1,
     "name": "Admin User",
-    "email": "admin@nodopay.com",
+    "email": "admin@fscredit.com",
     "role": "admin"
   },
   "token": "admin_token_here"
@@ -678,7 +678,7 @@ X-API-Token: your_business_api_token_here
 ```json
 {
   "message": "Invoice link generated successfully",
-  "invoice_link": "https://nodopay.com/checkout/inv-abc123xyz",
+  "invoice_link": "https://fscredit.com/checkout/inv-abc123xyz",
   "slug": "inv-abc123xyz",
   "invoice": {
     "id": 1,
@@ -1247,12 +1247,12 @@ X-API-Token: your_business_api_token_here
 
 ## Payment Gateway Integration API
 
-These endpoints are for external integrations (e.g., e-commerce platforms) to integrate Nodopay payment gateway.
+These endpoints are for external integrations (e.g., e-commerce platforms) to integrate FSCredit payment gateway.
 
 **Authentication:** Include API token in header: `X-API-Token: {business_api_token}`
 
 ### 1. Check Customer Credit
-**POST** `/api/pay-with-nodopay/check-credit`
+**POST** `/api/pay-with-fscredit/check-credit`
 
 **Headers:**
 - `X-API-Token: {business_api_token}`
@@ -1280,7 +1280,7 @@ These endpoints are for external integrations (e.g., e-commerce platforms) to in
 ```
 
 ### 2. Get Customer Details
-**GET** `/api/pay-with-nodopay/customer?account_number=1234567890123456`
+**GET** `/api/pay-with-fscredit/customer?account_number=1234567890123456`
 
 **Headers:**
 - `X-API-Token: {business_api_token}`
@@ -1300,7 +1300,7 @@ These endpoints are for external integrations (e.g., e-commerce platforms) to in
 ```
 
 ### 3. Process Purchase Request
-**POST** `/api/pay-with-nodopay/purchase`
+**POST** `/api/pay-with-fscredit/purchase`
 
 **Headers:**
 - `X-API-Token: {business_api_token}`
@@ -1643,7 +1643,7 @@ All errors follow this format:
    - Default PIN `0000` can **only** be used to change the PIN, **not** for payments
    - Customers must change their PIN before making any payments
    - Both CVV and PIN are required for all payment transactions:
-     - Third-party site payments (via Pay with Nodopay API)
+     - Third-party site payments (via Pay with FSCredit API)
      - Invoice link payments (via generated checkout links)
 
 3. **Invoice Links:**
@@ -1672,4 +1672,4 @@ All errors follow this format:
 
 ---
 
-**API Base URL:** `https://nodopay-api-0fbd4546e629.herokuapp.com/api`
+**API Base URL:** `https://fscredit-api-0fbd4546e629.herokuapp.com/api`

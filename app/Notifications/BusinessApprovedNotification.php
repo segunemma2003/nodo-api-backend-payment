@@ -19,14 +19,14 @@ class BusinessApprovedNotification extends Notification implements ShouldQueue
     public function toMail($notifiable)
     {
         return (new MailMessage)
-            ->subject('Your Nodopay Business Account Has Been Approved')
+            ->subject('Your FSCredit Business Account Has Been Approved')
             ->greeting('Hello ' . $notifiable->business_name . '!')
-            ->line('Congratulations! Your Nodopay business account has been approved.')
+            ->line('Congratulations! Your FSCredit business account has been approved.')
             ->line('**API Token:** ' . $notifiable->api_token)
-            ->line('You can now integrate Nodopay payment gateway into your platform.')
-            ->line('Use your API token to authenticate requests to the Nodopay API.')
+            ->line('You can now integrate FSCredit payment gateway into your platform.')
+            ->line('Use your API token to authenticate requests to the FSCredit API.')
             ->action('Login to Dashboard', url('/login'))
-            ->line('Thank you for choosing Nodopay!');
+            ->line('Thank you for choosing FSCredit!');
     }
 }
 

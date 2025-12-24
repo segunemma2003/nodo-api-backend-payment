@@ -33,7 +33,12 @@ class InvoiceService
 
         try {
             $purchaseDate = $purchaseDate ?? Carbon::now();
-            // due_date is optional - leave as null if not provided
+            $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+            
+            // Calculate due_date from purchase_date + payment_plan_duration months
+            if (!$dueDate) {
+                $dueDate = $purchaseDate->copy()->addMonths($paymentPlanDuration);
+            }
 
             $invoice = Invoice::create([
                 'customer_id' => $customer->id,
@@ -45,6 +50,7 @@ class InvoiceService
                 'paid_amount' => 0,
                 'remaining_balance' => $amount,
                 'purchase_date' => $purchaseDate,
+                'payment_plan_duration' => $paymentPlanDuration,
                 'due_date' => $dueDate,
                 'status' => 'pending',
             ]);
@@ -86,7 +92,19 @@ class InvoiceService
         try {
             $purchaseDate = $purchaseDate ?? Carbon::now();
             
-            // due_date is optional - leave as null if not provided
+            // Get payment plan duration from linked customer if available, otherwise default to 6
+            $paymentPlanDuration = 6;
+            if ($businessCustomer->linked_customer_id) {
+                $customer = Customer::find($businessCustomer->linked_customer_id);
+                if ($customer) {
+                    $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+                }
+            }
+            
+            // Calculate due_date from purchase_date + payment_plan_duration months
+            if (!$dueDate) {
+                $dueDate = $purchaseDate->copy()->addMonths($paymentPlanDuration);
+            }
 
             // Generate slug for payment link
             $slug = Invoice::generateSlug();
@@ -102,6 +120,7 @@ class InvoiceService
                 'paid_amount' => 0,
                 'remaining_balance' => $amount,
                 'purchase_date' => $purchaseDate,
+                'payment_plan_duration' => $paymentPlanDuration,
                 'due_date' => $dueDate,
                 'slug' => $slug,
                 'status' => 'pending',

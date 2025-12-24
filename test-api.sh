@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Nodopay API Testing Script
+# FSCredit API Testing Script
 # This script tests all API endpoints locally
 
 BASE_URL="http://localhost:8000/api"
@@ -9,7 +9,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}=== Nodopay API Testing Script ===${NC}\n"
+echo -e "${YELLOW}=== FSCredit API Testing Script ===${NC}\n"
 
 # Test 1: Customer Login
 echo -e "${YELLOW}Test 1: Customer Login${NC}"
@@ -41,7 +41,7 @@ echo -e "${YELLOW}Test 3: Admin Login${NC}"
 ADMIN_LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/admin/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@nodopay.com",
+    "email": "admin@fscredit.com",
     "password": "admin_password"
   }')
 echo "$ADMIN_LOGIN_RESPONSE" | jq .
@@ -72,9 +72,9 @@ curl -s -X GET "$BASE_URL/business/dashboard?business_id=1" \
   -H "Content-Type: application/json" | jq .
 echo ""
 
-# Test 8: Check Customer Credit (Pay with Nodopay)
+# Test 8: Check Customer Credit (Pay with FSCredit)
 echo -e "${YELLOW}Test 8: Check Customer Credit${NC}"
-curl -s -X POST "$BASE_URL/pay-with-nodopay/check-credit" \
+curl -s -X POST "$BASE_URL/pay-with-fscredit/check-credit" \
   -H "Content-Type: application/json" \
   -H "X-API-Token: $BUSINESS_API_TOKEN" \
   -d '{
@@ -83,9 +83,9 @@ curl -s -X POST "$BASE_URL/pay-with-nodopay/check-credit" \
   }' | jq .
 echo ""
 
-# Test 9: Purchase Request (Pay with Nodopay)
+# Test 9: Purchase Request (Pay with FSCredit)
 echo -e "${YELLOW}Test 9: Purchase Request${NC}"
-curl -s -X POST "$BASE_URL/pay-with-nodopay/purchase" \
+curl -s -X POST "$BASE_URL/pay-with-fscredit/purchase" \
   -H "Content-Type: application/json" \
   -H "X-API-Token: $BUSINESS_API_TOKEN" \
   -d '{
@@ -111,9 +111,9 @@ curl -s -X POST "$BASE_URL/pay-with-nodopay/purchase" \
   }' | jq .
 echo ""
 
-# Test 10: Get Customer Details (Pay with Nodopay)
+# Test 10: Get Customer Details (Pay with FSCredit)
 echo -e "${YELLOW}Test 10: Get Customer Details${NC}"
-curl -s -X GET "$BASE_URL/pay-with-nodopay/customer?customer_id=1&customer_email=customer@example.com" \
+curl -s -X GET "$BASE_URL/pay-with-fscredit/customer?customer_id=1&customer_email=customer@example.com" \
   -H "Content-Type: application/json" \
   -H "X-API-Token: $BUSINESS_API_TOKEN" | jq .
 echo ""

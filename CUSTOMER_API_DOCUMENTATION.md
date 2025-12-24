@@ -375,7 +375,7 @@ curl -X GET "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayme
 curl -X POST "https://nodopay-api-0fbd4546e629.herokuapp.com/api/customer/repayment-account/generate?customer_id=1"
 ```
 
-**Response (200 OK) - Virtual Account Created:**
+**Response (202 Accepted) - Job Queued:**
 ```json
 {
   "success": true,
