@@ -519,7 +519,8 @@ class BusinessController extends Controller
     {
         $business = $this->getBusiness($request);
 
-        $invoice = Invoice::where('id', $invoiceId)
+        $invoice = Invoice::with(['businessCustomer', 'customer', 'supplier'])
+            ->where('id', $invoiceId)
             ->where('supplier_id', $business->id)
             ->firstOrFail();
 
@@ -531,18 +532,53 @@ class BusinessController extends Controller
         $frontendUrl = env('FRONTEND_URL', env('APP_URL', 'https://fscredit.com'));
         $invoiceLink = rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug;
 
-        return response()->json([
+        $response = [
             'message' => 'Invoice link generated successfully',
             'invoice_link' => $invoiceLink,
             'slug' => $invoice->slug,
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_id' => $invoice->invoice_id,
-                'amount' => $invoice->total_amount,
+                'amount' => $invoice->principal_amount, // Businesses only see principal
                 'status' => $invoice->status,
                 'is_used' => $invoice->is_used,
+                'purchase_date' => $invoice->purchase_date ? $invoice->purchase_date->format('Y-m-d') : null,
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
             ],
-        ]);
+            'business' => [
+                'id' => $business->id,
+                'business_name' => $business->business_name,
+                'email' => $business->email,
+                'phone' => $business->phone,
+                'address' => $business->address,
+            ],
+        ];
+
+        // Add business customer (billed customer) details if available
+        if ($invoice->businessCustomer) {
+            $response['customer'] = [
+                'id' => $invoice->businessCustomer->id,
+                'business_name' => $invoice->businessCustomer->business_name,
+                'contact_name' => $invoice->businessCustomer->contact_name,
+                'contact_email' => $invoice->businessCustomer->contact_email,
+                'contact_phone' => $invoice->businessCustomer->contact_phone,
+                'address' => $invoice->businessCustomer->address,
+                'has_fscredit_account' => $invoice->businessCustomer->isLinked(),
+            ];
+        } elseif ($invoice->customer) {
+            // If invoice has a direct customer (not through businessCustomer)
+            $response['customer'] = [
+                'id' => $invoice->customer->id,
+                'account_number' => $invoice->customer->account_number,
+                'business_name' => $invoice->customer->business_name,
+                'email' => $invoice->customer->email,
+                'phone' => $invoice->customer->phone,
+                'address' => $invoice->customer->address,
+                'has_fscredit_account' => true,
+            ];
+        }
+
+        return response()->json($response);
     }
 
 
