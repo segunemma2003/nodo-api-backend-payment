@@ -26,7 +26,7 @@ class InvoiceCheckoutController extends Controller
      */
     public function getInvoiceBySlug($slug)
     {
-        $invoice = Invoice::with(['customer', 'supplier'])
+        $invoice = Invoice::with(['customer', 'supplier', 'businessCustomer', 'businessCustomer.linkedCustomer'])
             ->where('slug', $slug)
             ->firstOrFail();
 
@@ -42,7 +42,44 @@ class InvoiceCheckoutController extends Controller
 
         $invoice->load('transactions');
 
-        return response()->json([
+        // Update invoice status to get current interest calculation
+        $this->interestService->updateInvoiceStatus($invoice);
+        $invoice->refresh();
+
+        // Calculate interest information ONLY if customer has an FSCredit account
+        $interestInfo = null;
+        $customer = null;
+        
+        // Check if invoice has a direct customer or through businessCustomer
+        if ($invoice->customer) {
+            $customer = $invoice->customer;
+        } elseif ($invoice->businessCustomer && $invoice->businessCustomer->linkedCustomer) {
+            $customer = $invoice->businessCustomer->linkedCustomer;
+        }
+        
+        // Only return interest info if customer has an FSCredit account
+        if ($customer) {
+            $paymentPlanDuration = $invoice->payment_plan_duration ?? $customer->payment_plan_duration ?? 6;
+            $monthlyInterestRate = 0.035; // 3.5%
+            
+            // Calculate upfront interest: 3.5% * payment_plan_duration months * principal_amount
+            $upfrontInterestAmount = $invoice->principal_amount * $monthlyInterestRate * $paymentPlanDuration;
+            $totalInterestRate = $monthlyInterestRate * $paymentPlanDuration * 100; // Convert to percentage
+            
+            $interestInfo = [
+                'has_account' => true,
+                'payment_plan_duration_months' => $paymentPlanDuration,
+                'interest_rate_per_month' => $monthlyInterestRate * 100, // 3.5%
+                'total_interest_rate' => round($totalInterestRate, 2), // e.g., 21% for 6 months
+                'principal_amount' => (string) number_format($invoice->principal_amount, 2, '.', ''),
+                'interest_amount' => (string) number_format($upfrontInterestAmount, 2, '.', ''),
+                'total_amount_with_interest' => (string) number_format($invoice->principal_amount + $upfrontInterestAmount, 2, '.', ''),
+                'note' => "If you pay using FSCredit, an interest of " . round($totalInterestRate, 2) . "% ({$paymentPlanDuration} months × 3.5%) will be added to the principal amount.",
+            ];
+        }
+        // If no customer account, don't include fscredit_payment_info at all
+
+        $response = [
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_id' => $invoice->invoice_id,
@@ -50,6 +87,7 @@ class InvoiceCheckoutController extends Controller
                 'remaining_balance' => $invoice->remaining_balance,
                 'status' => $invoice->status,
                 'purchase_date' => $invoice->purchase_date->format('Y-m-d'),
+                'payment_plan_duration' => $invoice->payment_plan_duration,
                 'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                 'supplier' => [
                     'id' => $invoice->supplier?->id,
@@ -58,7 +96,27 @@ class InvoiceCheckoutController extends Controller
                 'description' => $invoice->getDescription(),
                 'items' => $invoice->getItems(),
             ],
-        ]);
+        ];
+        
+        // Only include fscredit_payment_info if customer has an account
+        if ($interestInfo) {
+            $response['fscredit_payment_info'] = $interestInfo;
+        }
+
+        // Add business customer (billed customer) details if available
+        if ($invoice->businessCustomer) {
+            $response['billed_customer'] = [
+                'id' => $invoice->businessCustomer->id,
+                'business_name' => $invoice->businessCustomer->business_name,
+                'contact_name' => $invoice->businessCustomer->contact_name,
+                'contact_email' => $invoice->businessCustomer->contact_email,
+                'contact_phone' => $invoice->businessCustomer->contact_phone,
+                'address' => $invoice->businessCustomer->address,
+                'has_fscredit_account' => $invoice->businessCustomer->isLinked(),
+            ];
+        }
+
+        return response()->json($response);
     }
 
     /**
