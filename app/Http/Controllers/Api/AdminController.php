@@ -657,6 +657,46 @@ class AdminController extends Controller
         ]);
     }
 
+    public function deleteBusiness(Request $request, $id)
+    {
+        $business = Business::findOrFail($id);
+
+        // Check for related records that might prevent deletion
+        $hasInvoices = $business->invoices()->exists();
+        $hasBusinessCustomers = $business->businessCustomers()->exists();
+        $hasTransactions = $business->transactions()->exists();
+        $hasWithdrawals = $business->withdrawals()->exists();
+        $hasProducts = $business->products()->exists();
+
+        if ($hasInvoices || $hasBusinessCustomers || $hasTransactions || $hasWithdrawals || $hasProducts) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete business with existing related records',
+                'details' => [
+                    'has_invoices' => $hasInvoices,
+                    'has_business_customers' => $hasBusinessCustomers,
+                    'has_transactions' => $hasTransactions,
+                    'has_withdrawals' => $hasWithdrawals,
+                    'has_products' => $hasProducts,
+                ],
+            ], 422);
+        }
+
+        // Log the deletion
+        Log::info('Business deleted by admin', [
+            'business_id' => $business->id,
+            'business_name' => $business->business_name,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        $business->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Business deleted successfully',
+        ]);
+    }
+
     public function getAllWithdrawals(Request $request)
     {
         $query = Withdrawal::with('business')

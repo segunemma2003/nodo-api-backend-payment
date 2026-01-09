@@ -111,6 +111,7 @@ Route::prefix('admin')->group(function () {
     Route::put('/businesses/{id}', [AdminController::class, 'updateBusiness']);
     Route::patch('/businesses/{id}/approve', [AdminController::class, 'approveBusiness']);
     Route::patch('/businesses/{id}/status', [AdminController::class, 'updateBusinessStatus']);
+    Route::delete('/businesses/{id}', [AdminController::class, 'deleteBusiness']);
     
     // Dashboard Statistics
     Route::get('/dashboard/stats', [AdminController::class, 'getDashboardStats']);
