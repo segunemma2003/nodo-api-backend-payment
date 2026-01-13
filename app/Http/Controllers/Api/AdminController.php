@@ -16,7 +16,9 @@ use App\Models\Transaction;
 use App\Models\Withdrawal;
 use App\Notifications\BusinessApprovedNotification;
 use App\Notifications\BusinessCreatedNotification;
+use App\Notifications\BusinessRegistrationNotification;
 use App\Notifications\CustomerCreatedNotification;
+use App\Notifications\CustomerRegistrationNotification;
 use App\Services\CreditLimitService;
 use App\Services\InterestService;
 use App\Services\PaystackService;
@@ -25,6 +27,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class AdminController extends Controller
@@ -105,6 +108,18 @@ class AdminController extends Controller
         }
 
         $customer->notify(new CustomerCreatedNotification($request->password));
+
+        // Send notification to accounting team about new customer (admin-created customers are auto-approved)
+        try {
+            Notification::route('mail', 'accounting@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
+            Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send customer registration email to accounting: ' . $e->getMessage(), [
+                'customer_id' => $customer->id,
+            ]);
+        }
 
         // Clear customer list caches since we added a new customer
         for ($page = 1; $page <= 20; $page++) {
@@ -572,7 +587,7 @@ class AdminController extends Controller
             $business->save();
         }
 
-        // Send notification (non-blocking - wrapped in try-catch to prevent failures)
+        // Send notification to business (non-blocking - wrapped in try-catch to prevent failures)
         try {
             $business->notify(new BusinessCreatedNotification($request->password));
         } catch (\Exception $e) {
@@ -580,6 +595,18 @@ class AdminController extends Controller
             \Log::warning('Failed to send business creation notification: ' . $e->getMessage(), [
                 'business_id' => $business->id,
                 'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Send notification to accounting team about new business registration
+        try {
+            Notification::route('mail', 'accounting@foodstuff.store')
+                ->notify(new BusinessRegistrationNotification($business));
+            Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new BusinessRegistrationNotification($business));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send business registration email to accounting: ' . $e->getMessage(), [
+                'business_id' => $business->id,
             ]);
         }
 

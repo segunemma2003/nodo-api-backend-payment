@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\CreateVirtualAccountJob;
 use App\Models\Customer;
+use App\Notifications\CustomerRegistrationNotification;
 use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -160,7 +162,17 @@ class AuthController extends Controller
         }
 
         // Credit limit will be set by admin when approved
-        // Send notification to admin about new registration
+        // Send notification to accounting team about new registration
+        try {
+            Notification::route('mail', 'accounting@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
+            Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send customer registration email to accounting: ' . $e->getMessage(), [
+                'customer_id' => $customer->id,
+            ]);
+        }
 
         return response()->json([
             'success' => true,

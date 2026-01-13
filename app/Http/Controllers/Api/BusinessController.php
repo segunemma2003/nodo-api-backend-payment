@@ -10,9 +10,14 @@ use App\Models\Invoice;
 use App\Models\Payout;
 use App\Models\Transaction;
 use App\Models\Withdrawal;
+use App\Notifications\BusinessCustomerCreatedNotification;
+use App\Notifications\InvoiceCreatedNotification;
+use App\Services\AccountingNotificationService;
 use App\Services\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
 class BusinessController extends Controller
@@ -250,6 +255,36 @@ class BusinessController extends Controller
             'description' => $request->description ?? "Invoice {$invoice->invoice_id}",
             'processed_at' => now(),
         ]);
+
+        // Send email to customer if they have an email
+        $customerEmail = $businessCustomer->contact_email;
+        if ($mainCustomer && $mainCustomer->email) {
+            $customerEmail = $mainCustomer->email;
+        }
+
+        if ($customerEmail) {
+            try {
+                Notification::route('mail', $customerEmail)
+                    ->notify(new InvoiceCreatedNotification($invoice, $customerEmail));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send invoice creation email to customer: ' . $e->getMessage(), [
+                    'invoice_id' => $invoice->id,
+                    'email' => $customerEmail,
+                ]);
+            }
+        }
+
+        // Send email to accounting team
+        try {
+            Notification::route('mail', 'accounting@foodstuff.store')
+                ->notify(new InvoiceCreatedNotification($invoice));
+            Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new InvoiceCreatedNotification($invoice));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send invoice creation email to accounting: ' . $e->getMessage(), [
+                'invoice_id' => $invoice->id,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -716,6 +751,31 @@ class BusinessController extends Controller
             'contact_email' => $request->contact_email,
             'status' => 'active', // Always active by default
         ]);
+
+        // Send email to customer if they have an email
+        if ($customer->contact_email) {
+            try {
+                Notification::route('mail', $customer->contact_email)
+                    ->notify(new BusinessCustomerCreatedNotification($customer, $business));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send business customer creation email to customer: ' . $e->getMessage(), [
+                    'customer_id' => $customer->id,
+                    'email' => $customer->contact_email,
+                ]);
+            }
+        }
+
+        // Send email to accounting team
+        try {
+            Notification::route('mail', 'accounting@foodstuff.store')
+                ->notify(new BusinessCustomerCreatedNotification($customer, $business));
+            Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new BusinessCustomerCreatedNotification($customer, $business));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send business customer creation email to accounting: ' . $e->getMessage(), [
+                'customer_id' => $customer->id,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
