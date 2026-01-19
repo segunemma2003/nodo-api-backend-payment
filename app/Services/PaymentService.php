@@ -224,14 +224,27 @@ class PaymentService
             // Send notifications
             if ($invoice->supplier) {
                 $customer->notify(new PaymentSuccessNotification($invoice, $amount, 'repayment'));
-                $this->webhookService->sendPaymentUpdate($invoice->supplier, [
-                    'payment_reference' => $payment->payment_reference,
-                    'invoice_id' => $invoice->invoice_id,
-                    'amount' => $amount,
-                    'customer_id' => $customer->id,
-                    'account_number' => $customer->account_number,
-                    'status' => 'completed',
-                ]);
+                
+                // Send webhook to business callback URL with payment status (succeeded)
+                if ($invoice->supplier->webhook_url) {
+                    $invoice->load('businessCustomer');
+                    $businessCustomer = $invoice->businessCustomer;
+                    
+                    $this->webhookService->sendWebhook($invoice->supplier, 'payment.succeeded', [
+                        'invoice_id' => $invoice->invoice_id,
+                        'slug' => $invoice->slug,
+                        'status' => 'succeeded',
+                        'amount' => $amount,
+                        'total_amount' => $invoice->total_amount,
+                        'paid_amount' => $invoice->paid_amount,
+                        'remaining_balance' => $invoice->remaining_balance,
+                        'customer_email' => $businessCustomer->contact_email ?? null,
+                        'customer_name' => $businessCustomer->business_name ?? null,
+                        'account_number' => $customer->account_number,
+                        'payment_reference' => $payment->payment_reference ?? null,
+                        'paid_at' => now()->toIso8601String(),
+                    ]);
+                }
             }
 
             Cache::forget('customer_credit_' . $customer->id);

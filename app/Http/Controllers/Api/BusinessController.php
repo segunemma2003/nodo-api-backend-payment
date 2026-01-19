@@ -14,6 +14,7 @@ use App\Notifications\BusinessCustomerCreatedNotification;
 use App\Notifications\InvoiceCreatedNotification;
 use App\Services\AccountingNotificationService;
 use App\Services\InvoiceService;
+use App\Services\WebhookService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -23,10 +24,12 @@ use Illuminate\Validation\ValidationException;
 class BusinessController extends Controller
 {
     protected InvoiceService $invoiceService;
+    protected WebhookService $webhookService;
 
-    public function __construct(InvoiceService $invoiceService)
+    public function __construct(InvoiceService $invoiceService, WebhookService $webhookService)
     {
         $this->invoiceService = $invoiceService;
+        $this->webhookService = $webhookService;
     }
 
     public function login(Request $request)
@@ -189,25 +192,16 @@ class BusinessController extends Controller
         }
 
         $request->validate([
-            'business_customer_id' => [
-                'required',
-                'integer',
-                function ($attribute, $value, $fail) use ($business) {
-                    $businessCustomer = BusinessCustomer::where('business_id', $business->id)
-                        ->where('id', $value)
-                        ->first();
-                    if (!$businessCustomer) {
-                        $fail('The selected business customer does not exist or does not belong to your business.');
-                    }
-                    if ($businessCustomer && $businessCustomer->status !== 'active') {
-                        $fail('The selected business customer is not active.');
-                    }
-                },
-            ],
+            'contact_email' => 'required|email|max:255',
+            'business_name' => 'nullable|string|max:255',
+            'contact_name' => 'nullable|string|max:255',
+            'contact_phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
             'amount' => 'required|numeric|min:0.01',
             'purchase_date' => 'nullable|date',
             'due_date' => 'nullable|date',
             'description' => 'nullable|string',
+            'redirect_url' => 'nullable|url|max:500', // Optional redirect URL for payment success
             'items' => 'nullable|array',
             'items.*.name' => 'required_with:items|string',
             'items.*.quantity' => 'required_with:items|integer|min:1',
@@ -216,8 +210,62 @@ class BusinessController extends Controller
             'items.*.uom' => 'nullable|string', // Unit of Measure (e.g., "kg", "pieces", "liters", "boxes")
         ]);
 
+        // Find or create business customer by email
         $businessCustomer = BusinessCustomer::where('business_id', $business->id)
-            ->findOrFail($request->business_customer_id);
+            ->where('contact_email', $request->contact_email)
+            ->first();
+
+        if (!$businessCustomer) {
+            // Create new business customer
+            $businessCustomer = BusinessCustomer::create([
+                'business_id' => $business->id,
+                'business_name' => $request->business_name ?? 'Customer',
+                'contact_email' => $request->contact_email,
+                'contact_name' => $request->contact_name,
+                'contact_phone' => $request->contact_phone,
+                'address' => $request->address,
+                'status' => 'active',
+            ]);
+
+            // Send notification to accounting team about new customer
+            try {
+                Notification::route('mail', 'accounting@foodstuff.store')
+                    ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
+                Notification::route('mail', 'accountings@foodstuff.store')
+                    ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send business customer creation email: ' . $e->getMessage(), [
+                    'business_customer_id' => $businessCustomer->id,
+                ]);
+            }
+        } else {
+            // Update existing business customer with provided information (if any)
+            $updateData = [];
+            if ($request->has('business_name') && $request->business_name) {
+                $updateData['business_name'] = $request->business_name;
+            }
+            if ($request->has('contact_name') && $request->contact_name) {
+                $updateData['contact_name'] = $request->contact_name;
+            }
+            if ($request->has('contact_phone') && $request->contact_phone) {
+                $updateData['contact_phone'] = $request->contact_phone;
+            }
+            if ($request->has('address') && $request->address) {
+                $updateData['address'] = $request->address;
+            }
+            
+            if (!empty($updateData)) {
+                $businessCustomer->update($updateData);
+            }
+
+            // Check if customer is active
+            if ($businessCustomer->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The customer account is not active',
+                ], 400);
+            }
+        }
 
         // If business customer is linked to a main customer, check credit
         $mainCustomer = $businessCustomer->linkedCustomer;
@@ -231,6 +279,9 @@ class BusinessController extends Controller
             }
         }
 
+        // Get redirect URL from request or business profile
+        $redirectUrl = $request->redirect_url ?? $business->redirect_url;
+
         // Create invoice with business_customer_id (customer_id will be set when payment is made)
         $invoice = $this->invoiceService->createInvoiceForBusinessCustomer(
             $businessCustomer,
@@ -238,7 +289,8 @@ class BusinessController extends Controller
             $business->business_name,
             $request->purchase_date ? \Carbon\Carbon::parse($request->purchase_date) : null,
             $request->due_date ? \Carbon\Carbon::parse($request->due_date) : null,
-            $business->id
+            $business->id,
+            $redirectUrl
         );
 
         $transaction = Transaction::create([
@@ -286,6 +338,12 @@ class BusinessController extends Controller
             ]);
         }
 
+        // Generate payment link with correct base URL
+        $frontendUrl = env('FRONTEND_URL', 'https://fsscredit.foodstuff.store');
+        $paymentLink = $invoice->slug ? rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug : null;
+
+        // No webhook sent on invoice creation - only payment status webhooks are sent
+
         return response()->json([
             'success' => true,
             'message' => 'Invoice created successfully',
@@ -295,14 +353,19 @@ class BusinessController extends Controller
                 'amount' => $invoice->principal_amount,
                 'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
                 'status' => $invoice->status,
-                'payment_link' => $invoice->slug ? url("/api/invoice/checkout/{$invoice->slug}") : null,
+                'payment_link' => $paymentLink,
+                'payment_link_expires_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
                 'description' => $request->description,
                 'items' => $request->items ?? [],
             ],
-            'business_customer' => [
+            'customer' => [
                 'id' => $businessCustomer->id,
                 'business_name' => $businessCustomer->business_name,
+                'contact_email' => $businessCustomer->contact_email,
+                'contact_name' => $businessCustomer->contact_name,
+                'contact_phone' => $businessCustomer->contact_phone,
                 'is_linked' => $businessCustomer->isLinked(),
+                'is_new_customer' => $businessCustomer->wasRecentlyCreated,
             ],
             'transaction' => [
                 'transaction_reference' => $transaction->transaction_reference,
@@ -561,6 +624,13 @@ class BusinessController extends Controller
 
         if (empty($invoice->slug)) {
             $invoice->slug = Invoice::generateSlug();
+            $invoice->slug_expires_at = \Carbon\Carbon::now()->addMinutes(30);
+            $invoice->save();
+        } elseif ($invoice->isSlugExpired()) {
+            // Regenerate slug if expired
+            $invoice->slug = Invoice::generateSlug();
+            $invoice->slug_expires_at = \Carbon\Carbon::now()->addMinutes(30);
+            $invoice->is_used = false; // Reset is_used when regenerating
             $invoice->save();
         }
 
@@ -571,6 +641,7 @@ class BusinessController extends Controller
             'message' => 'Invoice link generated successfully',
             'invoice_link' => $invoiceLink,
             'slug' => $invoice->slug,
+            'payment_link_expires_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_id' => $invoice->invoice_id,

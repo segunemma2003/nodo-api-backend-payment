@@ -26,6 +26,7 @@ class Business extends Authenticatable
         'approval_status',
         'api_token',
         'webhook_url',
+        'redirect_url',
         'status',
     ];
 

@@ -7,18 +7,22 @@ use App\Models\Invoice;
 use App\Models\Customer;
 use App\Services\PaymentService;
 use App\Services\InterestService;
+use App\Services\WebhookService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceCheckoutController extends Controller
 {
     protected PaymentService $paymentService;
     protected InterestService $interestService;
+    protected WebhookService $webhookService;
 
-    public function __construct(PaymentService $paymentService, InterestService $interestService)
+    public function __construct(PaymentService $paymentService, InterestService $interestService, WebhookService $webhookService)
     {
         $this->paymentService = $paymentService;
         $this->interestService = $interestService;
+        $this->webhookService = $webhookService;
     }
 
     /**
@@ -37,6 +41,18 @@ class InvoiceCheckoutController extends Controller
                     'invoice_id' => $invoice->invoice_id,
                     'status' => $invoice->status,
                 ],
+            ], 400);
+        }
+
+        // Check if payment link has expired (30 minutes)
+        if ($invoice->isSlugExpired()) {
+            return response()->json([
+                'message' => 'This payment link has expired. Please request a new payment link from the business.',
+                'invoice' => [
+                    'invoice_id' => $invoice->invoice_id,
+                    'status' => $invoice->status,
+                ],
+                'expired_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
             ], 400);
         }
 
@@ -139,28 +155,44 @@ class InvoiceCheckoutController extends Controller
             ], 400);
         }
 
+        // Check if payment link has expired (30 minutes)
+        if ($invoice->isSlugExpired()) {
+            return response()->json([
+                'message' => 'This payment link has expired. Please request a new payment link from the business.',
+                'expired_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
+            ], 400);
+        }
+
         $customer = Customer::where('account_number', $request->account_number)->firstOrFail();
 
         // Check approval status - customer must be approved by admin
         if ($customer->approval_status !== 'approved') {
+            // Send webhook for payment failure
+            $this->sendPaymentFailureWebhook($invoice, 'Account pending approval');
             return response()->json([
                 'message' => 'Your account is pending approval. Please wait for admin approval before making payments.',
             ], 400);
         }
 
         if ($customer->status !== 'active') {
+            // Send webhook for payment failure
+            $this->sendPaymentFailureWebhook($invoice, 'Account not active');
             return response()->json([
                 'message' => 'Your account is not active',
             ], 400);
         }
 
         if (!$customer->verifyCvv($request->cvv)) {
+            // Send webhook for payment failure
+            $this->sendPaymentFailureWebhook($invoice, 'Invalid CVV');
             return response()->json([
                 'message' => 'Invalid CVV',
             ], 400);
         }
 
         if (!$customer->verifyPinForPayment($request->pin)) {
+            // Send webhook for payment failure
+            $this->sendPaymentFailureWebhook($invoice, 'Invalid PIN');
             return response()->json([
                 'message' => 'Invalid PIN. Please use your payment PIN (not the default 0000)',
             ], 400);
@@ -207,11 +239,25 @@ class InvoiceCheckoutController extends Controller
 
         // Process payment for this specific invoice
         // Invoice is now linked to customer, so it will appear in customer's invoice list
-        $this->paymentService->processInvoicePayment($customer, $invoice, $paymentAmount);
+        try {
+            $this->paymentService->processInvoicePayment($customer, $invoice, $paymentAmount);
+            
+            $invoice->refresh();
+            $invoice->is_used = true;
+            $invoice->save();
+            
+            // Webhook for success is sent in PaymentService::processInvoicePayment()
+        } catch (\Exception $e) {
+            // Send webhook for payment failure
+            $this->sendPaymentFailureWebhook($invoice, $e->getMessage());
+            throw $e;
+        }
 
-        $invoice->refresh();
-        $invoice->is_used = true;
-        $invoice->save();
+        // Get redirect URL from invoice or business
+        $redirectUrl = $invoice->redirect_url;
+        if (!$redirectUrl && $invoice->supplier) {
+            $redirectUrl = $invoice->supplier->redirect_url;
+        }
 
         return response()->json([
             'message' => 'Payment processed successfully',
@@ -222,7 +268,39 @@ class InvoiceCheckoutController extends Controller
                 'paid_amount' => $invoice->paid_amount,
                 'remaining_balance' => $invoice->remaining_balance,
             ],
+            'redirect_url' => $redirectUrl, // Frontend will redirect to this URL after payment
         ]);
+    }
+
+    /**
+     * Send webhook for payment failure
+     */
+    private function sendPaymentFailureWebhook(Invoice $invoice, string $reason): void
+    {
+        if (!$invoice->supplier || !$invoice->supplier->webhook_url) {
+            return;
+        }
+
+        try {
+            $invoice->load('businessCustomer');
+            $businessCustomer = $invoice->businessCustomer;
+            
+            $this->webhookService->sendWebhook($invoice->supplier, 'payment.failed', [
+                'invoice_id' => $invoice->invoice_id,
+                'slug' => $invoice->slug,
+                'status' => 'failed',
+                'amount' => $invoice->principal_amount,
+                'reason' => $reason,
+                'customer_email' => $businessCustomer->contact_email ?? null,
+                'customer_name' => $businessCustomer->business_name ?? null,
+                'failed_at' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to send payment failure webhook: ' . $e->getMessage(), [
+                'business_id' => $invoice->supplier_id,
+                'invoice_id' => $invoice->id,
+            ]);
+        }
     }
 }
 

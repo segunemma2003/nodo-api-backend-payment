@@ -85,7 +85,8 @@ class InvoiceService
         string $supplierName = 'Foodstuff Store',
         ?Carbon $purchaseDate = null,
         ?Carbon $dueDate = null,
-        ?int $supplierId = null
+        ?int $supplierId = null,
+        ?string $redirectUrl = null
     ): Invoice {
         DB::beginTransaction();
 
@@ -109,6 +110,9 @@ class InvoiceService
             // Generate slug for payment link
             $slug = Invoice::generateSlug();
 
+            // Set expiration time: 30 minutes from now
+            $slugExpiresAt = Carbon::now()->addMinutes(30);
+
             $invoice = Invoice::create([
                 'customer_id' => $businessCustomer->linked_customer_id, // Will be null if not linked yet
                 'business_customer_id' => $businessCustomer->id,
@@ -123,6 +127,8 @@ class InvoiceService
                 'payment_plan_duration' => $paymentPlanDuration,
                 'due_date' => $dueDate,
                 'slug' => $slug,
+                'slug_expires_at' => $slugExpiresAt,
+                'redirect_url' => $redirectUrl,
                 'status' => 'pending',
             ]);
 

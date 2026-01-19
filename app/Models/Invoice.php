@@ -15,6 +15,8 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_id',
         'slug',
+        'slug_expires_at',
+        'redirect_url',
         'is_used',
         'customer_id', // Main customer (nullable - linked when payment is made)
         'business_customer_id', // Business customer (required for invoices from businesses)
@@ -48,6 +50,7 @@ class Invoice extends Model
         'due_date' => 'date',
         'grace_period_end_date' => 'date',
         'credit_repaid_at' => 'datetime',
+        'slug_expires_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo
@@ -144,6 +147,18 @@ class Invoice extends Model
         } while (self::where('slug', $slug)->exists());
 
         return $slug;
+    }
+
+    /**
+     * Check if the payment link (slug) has expired
+     */
+    public function isSlugExpired(): bool
+    {
+        if (!$this->slug_expires_at) {
+            return false; // No expiration set, link is valid
+        }
+
+        return now()->isAfter($this->slug_expires_at);
     }
 
     protected static function boot()
