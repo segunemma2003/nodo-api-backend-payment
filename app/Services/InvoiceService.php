@@ -86,7 +86,8 @@ class InvoiceService
         ?Carbon $purchaseDate = null,
         ?Carbon $dueDate = null,
         ?int $supplierId = null,
-        ?string $redirectUrl = null
+        ?string $redirectUrl = null,
+        ?string $callbackUrl = null
     ): Invoice {
         DB::beginTransaction();
 
@@ -129,6 +130,7 @@ class InvoiceService
                 'slug' => $slug,
                 'slug_expires_at' => $slugExpiresAt,
                 'redirect_url' => $redirectUrl,
+                'callback_url' => $callbackUrl,
                 'status' => 'pending',
             ]);
 

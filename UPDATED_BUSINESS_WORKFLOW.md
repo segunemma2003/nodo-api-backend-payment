@@ -41,7 +41,7 @@ I want to create an invoice using my API token from the dashboard, so that:
   "contact_phone": "+2348012345678",
   "address": "123 Main Street, Lagos",
   "amount": 50000.00,
-  "redirect_url": "https://yourbusiness.com/payment/success",
+    "callback_url": "https://yourbusiness.com/payment/success",
   "purchase_date": "2024-01-15",
   "description": "Purchase of goods",
   "items": [
@@ -65,7 +65,7 @@ I want to create an invoice using my API token from the dashboard, so that:
 - `contact_name` (string): Contact person's name
 - `contact_phone` (string): Contact phone number
 - `address` (string): Customer's address
-- `redirect_url` (string, URL): Where to redirect customer after successful payment (defaults to business profile redirect_url if not provided)
+- `callback_url` (string, URL): Where to redirect customer after payment (with payment status in query params). Defaults to business profile callback_url if not provided
 - `purchase_date` (date, YYYY-MM-DD): Date of purchase (defaults to today)
 - `due_date` (date, YYYY-MM-DD): Due date for payment (auto-calculated if not provided)
 - `description` (string): Invoice description
@@ -89,6 +89,7 @@ I want to create an invoice using my API token from the dashboard, so that:
     "status": "pending",
     "payment_link": "https://fsscredit.foodstuff.store/checkout/inv-abc123xyz456",
     "payment_link_expires_at": "2024-01-15T11:00:00Z",
+    "callback_url": "https://yourbusiness.com/payment/success",
     "description": "Purchase of goods",
     "items": [...]
   },
@@ -112,11 +113,15 @@ I want to create an invoice using my API token from the dashboard, so that:
 - ✅ **Uses customer email** (`contact_email`) instead of `business_customer_id` - easier for third-party integration
 - ✅ **Auto-creates customer** if email doesn't exist - no need to pre-create customers
 - ✅ **Updates customer info** if customer exists - optional fields update existing customer data
-- ✅ Payment link uses base URL: `https://fsscredit.foodstuff.store`
-- ✅ Payment link format: `https://fsscredit.foodstuff.store/checkout/{slug}`
+- ✅ **Payment link** (`payment_link`): URL where user makes payment - `https://fsscredit.foodstuff.store/checkout/{slug}`
+- ✅ **Callback URL** (`callback_url`): URL where user will be redirected after payment (with payment status in query params)
 - ✅ **Payment link expires in 30 minutes** from creation
 - ✅ Invoice status is `pending` (doesn't affect customer balance yet)
 - ✅ If link expires, business can regenerate it via `POST /api/business/invoices/{id}/generate-link`
+
+**Important for Third Parties:**
+- **`payment_link`**: Send this to your customer - this is where they make payment
+- **`callback_url`**: This is where the user will be redirected after payment (you'll receive this in payment response with payment status appended)
 
 ---
 
@@ -158,7 +163,7 @@ I want to create an invoice using my API token from the dashboard, so that:
 - Customer balance is deducted
 - Business receives payout (if applicable)
 - **✅ Customer receives payment confirmation email** (PaymentSuccessNotification)
-- **✅ Payment response includes `redirect_url`** - Frontend redirects customer to business site
+- **✅ Payment response includes `callback_url`** - Frontend redirects customer to business site after payment (with payment status in query params)
 
 ---
 
@@ -325,6 +330,48 @@ Attempt 4: 3 hours later (if attempt 3 failed)
 ### 2. Customer Pays Invoice
 **POST** `/api/invoice/checkout/{slug}/pay`
 
+**Request:**
+```json
+{
+  "account_number": "1234567890123456",
+  "cvv": "123",
+  "pin": "1234"
+}
+```
+
+**Response (200 OK - Success):**
+```json
+{
+  "message": "Payment processed successfully",
+  "invoice": {
+    "id": 1,
+    "invoice_id": "FSCREDIT-ABC123",
+    "status": "paid",
+    "paid_amount": "50000.00",
+    "remaining_balance": "0.00"
+  },
+  "callback_url": "https://yourbusiness.com/payment/success?status=succeeded&invoice_id=FSCREDIT-ABC123&slug=inv-abc123xyz456"
+}
+```
+
+**Response (400 Bad Request - Error):**
+```json
+{
+  "message": "Invalid CVV",
+  "callback_url": "https://yourbusiness.com/payment/success?status=failed&invoice_id=FSCREDIT-ABC123&slug=inv-abc123xyz456&reason=Invalid%20CVV"
+}
+```
+
+**Important:** 
+- All payment responses (both success and error) include `callback_url` field
+- **Callback URL includes payment status as query parameters:**
+  - `status`: `succeeded` or `failed`
+  - `invoice_id`: Invoice ID (e.g., "FSCREDIT-ABC123")
+  - `slug`: Payment link slug
+  - `reason`: Failure reason (only for failed payments, URL encoded)
+- Frontend should redirect user to `callback_url` after payment
+- If business hasn't set a callback URL, this field will be `null`
+
 **Triggers:**
 - ✅ Invoice status updated to `paid` (if successful)
 - ✅ Customer balance deducted (if successful)
@@ -332,6 +379,7 @@ Attempt 4: 3 hours later (if attempt 3 failed)
 - ✅ **Webhook to business callback URL** with payment status:
   - `payment.succeeded` - if payment successful
   - `payment.failed` - if payment failed (with reason)
+- ✅ **Callback URL in all responses** - Frontend can redirect customer to `callback_url` after payment (success or error, with payment status in query params)
 
 ---
 
@@ -625,12 +673,49 @@ Businesses can configure:
 - Business must respond with HTTP 200 to stop retries
 - **Must verify webhook signature** using API token
 
-**Setting Redirect URL:**
-- Businesses can set default `redirect_url` in their profile/dashboard
-- Can also pass `redirect_url` per invoice when creating (overrides default)
-- After successful payment, frontend receives `redirect_url` in API response
-- Frontend redirects customer to this URL
-- If no redirect URL is set, frontend can show success message instead
+**Setting Callback URL (Post-Payment Redirect):**
+- **Callback URL** is where the user gets redirected AFTER making payment
+- Businesses can set default `callback_url` in their profile/dashboard
+- Can also pass `callback_url` per invoice when creating (overrides default)
+- **All payment responses** (success and error) include `callback_url` with payment status as query parameters
+- Frontend redirects customer to this URL after payment
+- **Payment status is automatically added** to callback URL as query parameters:
+  - Success: `?status=succeeded&invoice_id=XXX&slug=YYY`
+  - Failure: `?status=failed&invoice_id=XXX&slug=YYY&reason=ZZZ`
+- Business site can read query parameters to know payment result
+- If no callback URL is set, `callback_url` will be `null` - frontend can show message instead
+
+**Note:** `redirect_url` (if still used) is for the payment link itself, while `callback_url` is where user goes after payment.
+
+**Example Callback URLs:**
+
+**Success:**
+```
+https://yourbusiness.com/payment/success?status=succeeded&invoice_id=FSCREDIT-ABC123&slug=inv-abc123xyz456
+```
+
+**Failure:**
+```
+https://yourbusiness.com/payment/success?status=failed&invoice_id=FSCREDIT-ABC123&slug=inv-abc123xyz456&reason=Invalid%20CVV
+```
+
+**Business Site Implementation:**
+```javascript
+// On your payment success/failure page (callback URL)
+const urlParams = new URLSearchParams(window.location.search);
+const status = urlParams.get('status'); // 'succeeded' or 'failed'
+const invoiceId = urlParams.get('invoice_id');
+const slug = urlParams.get('slug');
+const reason = urlParams.get('reason'); // Only for failures
+
+if (status === 'succeeded') {
+  showSuccessMessage(`Payment successful for invoice ${invoiceId}`);
+  // Update order status, send confirmation, etc.
+} else if (status === 'failed') {
+  showErrorMessage(`Payment failed: ${reason}`);
+  // Handle failed payment, allow retry, etc.
+}
+```
 
 ---
 

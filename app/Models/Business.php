@@ -27,6 +27,7 @@ class Business extends Authenticatable
         'api_token',
         'webhook_url',
         'redirect_url',
+        'callback_url',
         'status',
     ];
 

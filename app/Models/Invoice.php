@@ -17,6 +17,7 @@ class Invoice extends Model
         'slug',
         'slug_expires_at',
         'redirect_url',
+        'callback_url',
         'is_used',
         'customer_id', // Main customer (nullable - linked when payment is made)
         'business_customer_id', // Business customer (required for invoices from businesses)

@@ -149,17 +149,24 @@ class InvoiceCheckoutController extends Controller
         $invoice = Invoice::where('slug', $slug)
             ->firstOrFail();
 
+        // Get base callback URL from invoice or business (where user goes after payment)
+        $baseCallbackUrl = $this->getCallbackUrl($invoice);
+
         if ($invoice->is_used) {
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Invoice link already used');
             return response()->json([
                 'message' => 'This invoice link has already been used',
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
         // Check if payment link has expired (30 minutes)
         if ($invoice->isSlugExpired()) {
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Payment link expired');
             return response()->json([
                 'message' => 'This payment link has expired. Please request a new payment link from the business.',
                 'expired_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
@@ -169,32 +176,40 @@ class InvoiceCheckoutController extends Controller
         if ($customer->approval_status !== 'approved') {
             // Send webhook for payment failure
             $this->sendPaymentFailureWebhook($invoice, 'Account pending approval');
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Account pending approval');
             return response()->json([
                 'message' => 'Your account is pending approval. Please wait for admin approval before making payments.',
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
         if ($customer->status !== 'active') {
             // Send webhook for payment failure
             $this->sendPaymentFailureWebhook($invoice, 'Account not active');
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Account not active');
             return response()->json([
                 'message' => 'Your account is not active',
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
         if (!$customer->verifyCvv($request->cvv)) {
             // Send webhook for payment failure
             $this->sendPaymentFailureWebhook($invoice, 'Invalid CVV');
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Invalid CVV');
             return response()->json([
                 'message' => 'Invalid CVV',
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
         if (!$customer->verifyPinForPayment($request->pin)) {
             // Send webhook for payment failure
             $this->sendPaymentFailureWebhook($invoice, 'Invalid PIN');
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Invalid PIN');
             return response()->json([
                 'message' => 'Invalid PIN. Please use your payment PIN (not the default 0000)',
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
@@ -202,8 +217,10 @@ class InvoiceCheckoutController extends Controller
 
         if ($invoice->customer_id && $invoice->customer_id !== $customer->id) {
             if (!$invoice->business_customer_id) {
+                $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Invoice does not belong to account');
                 return response()->json([
                     'message' => 'This invoice does not belong to the provided account',
+                    'callback_url' => $callbackUrl,
                 ], 400);
             }
         }
@@ -211,9 +228,15 @@ class InvoiceCheckoutController extends Controller
         if ($invoice->status === 'paid') {
             $invoice->is_used = true;
             $invoice->save();
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, 'Invoice already paid');
             return response()->json([
                 'message' => 'Invoice is already paid',
-                'invoice' => $invoice,
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_id' => $invoice->invoice_id,
+                    'status' => $invoice->status,
+                ],
+                'callback_url' => $callbackUrl,
             ], 400);
         }
 
@@ -247,16 +270,17 @@ class InvoiceCheckoutController extends Controller
             $invoice->save();
             
             // Webhook for success is sent in PaymentService::processInvoicePayment()
+            
+            // Build callback URL with success status (where user goes after payment)
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'succeeded', $invoice);
         } catch (\Exception $e) {
             // Send webhook for payment failure
             $this->sendPaymentFailureWebhook($invoice, $e->getMessage());
-            throw $e;
-        }
-
-        // Get redirect URL from invoice or business
-        $redirectUrl = $invoice->redirect_url;
-        if (!$redirectUrl && $invoice->supplier) {
-            $redirectUrl = $invoice->supplier->redirect_url;
+            $callbackUrl = $this->buildCallbackUrlWithStatus($baseCallbackUrl, 'failed', $invoice, $e->getMessage());
+            return response()->json([
+                'message' => 'Payment processing failed: ' . $e->getMessage(),
+                'callback_url' => $callbackUrl,
+            ], 400);
         }
 
         return response()->json([
@@ -268,8 +292,46 @@ class InvoiceCheckoutController extends Controller
                 'paid_amount' => $invoice->paid_amount,
                 'remaining_balance' => $invoice->remaining_balance,
             ],
-            'redirect_url' => $redirectUrl, // Frontend will redirect to this URL after payment
+            'callback_url' => $callbackUrl, // Frontend redirects user to this URL after payment (includes payment status as query params)
         ]);
+    }
+
+    /**
+     * Get callback URL from invoice or business (where user goes after payment)
+     */
+    private function getCallbackUrl(Invoice $invoice): ?string
+    {
+        $callbackUrl = $invoice->callback_url;
+        if (!$callbackUrl && $invoice->supplier) {
+            $callbackUrl = $invoice->supplier->callback_url;
+        }
+        return $callbackUrl;
+    }
+
+    /**
+     * Build callback URL with payment status and invoice information as query parameters
+     * This is where the user gets redirected AFTER payment
+     */
+    private function buildCallbackUrlWithStatus(?string $baseUrl, string $status, Invoice $invoice, ?string $reason = null): ?string
+    {
+        if (!$baseUrl) {
+            return null;
+        }
+
+        $params = [
+            'status' => $status,
+            'invoice_id' => $invoice->invoice_id,
+            'slug' => $invoice->slug,
+        ];
+
+        if ($reason) {
+            $params['reason'] = urlencode($reason);
+        }
+
+        // Check if URL already has query parameters
+        $separator = strpos($baseUrl, '?') !== false ? '&' : '?';
+        
+        return $baseUrl . $separator . http_build_query($params);
     }
 
     /**

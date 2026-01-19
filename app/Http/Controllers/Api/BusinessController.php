@@ -201,7 +201,7 @@ class BusinessController extends Controller
             'purchase_date' => 'nullable|date',
             'due_date' => 'nullable|date',
             'description' => 'nullable|string',
-            'redirect_url' => 'nullable|url|max:500', // Optional redirect URL for payment success
+            'callback_url' => 'nullable|url|max:500', // URL to redirect user after payment (with payment status)
             'items' => 'nullable|array',
             'items.*.name' => 'required_with:items|string',
             'items.*.quantity' => 'required_with:items|integer|min:1',
@@ -279,8 +279,8 @@ class BusinessController extends Controller
             }
         }
 
-        // Get redirect URL from request or business profile
-        $redirectUrl = $request->redirect_url ?? $business->redirect_url;
+        // Get callback URL from request or business profile (where user goes after payment)
+        $callbackUrl = $request->callback_url ?? $business->callback_url;
 
         // Create invoice with business_customer_id (customer_id will be set when payment is made)
         $invoice = $this->invoiceService->createInvoiceForBusinessCustomer(
@@ -290,7 +290,8 @@ class BusinessController extends Controller
             $request->purchase_date ? \Carbon\Carbon::parse($request->purchase_date) : null,
             $request->due_date ? \Carbon\Carbon::parse($request->due_date) : null,
             $business->id,
-            $redirectUrl
+            null, // redirect_url (not used for payment link)
+            $callbackUrl
         );
 
         $transaction = Transaction::create([
@@ -342,6 +343,9 @@ class BusinessController extends Controller
         $frontendUrl = env('FRONTEND_URL', 'https://fsscredit.foodstuff.store');
         $paymentLink = $invoice->slug ? rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug : null;
 
+        // Get callback URL (where user goes after payment)
+        $callbackUrl = $invoice->callback_url ?? $business->callback_url;
+
         // No webhook sent on invoice creation - only payment status webhooks are sent
 
         return response()->json([
@@ -355,6 +359,7 @@ class BusinessController extends Controller
                 'status' => $invoice->status,
                 'payment_link' => $paymentLink,
                 'payment_link_expires_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
+                'callback_url' => $callbackUrl, // URL where user will be redirected after payment (with payment status in query params)
                 'description' => $request->description,
                 'items' => $request->items ?? [],
             ],
