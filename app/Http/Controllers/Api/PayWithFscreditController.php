@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ApiToken;
 use App\Models\Business;
+use App\Models\BusinessCustomer;
 use App\Models\Customer;
 use App\Models\Transaction;
 use App\Services\InvoiceService;
@@ -280,6 +281,181 @@ class PayWithFscreditController extends Controller
                 'status' => $customer->status,
             ],
         ]);
+    }
+
+    /**
+     * Create invoice and return payment link
+     * Accepts purchase request and returns a payment link that user can visit to complete payment
+     */
+    public function createInvoiceLink(Request $request)
+    {
+        // Authentication handled by middleware
+
+        $request->validate([
+            'customer_email' => 'required|email',
+            'amount' => 'required|numeric|min:0.01',
+            'purchase_date' => 'nullable|date',
+            'order_reference' => 'nullable|string',
+            'callback_url' => 'nullable|url|max:500',
+            'items' => 'required|array|min:1',
+            'items.*.name' => 'required|string',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'required|numeric|min:0.01',
+            'items.*.description' => 'nullable|string',
+        ]);
+
+        try {
+            $business = $request->input('business');
+            
+            if (!$business) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business not found',
+                ], 401);
+            }
+
+            if ($business->approval_status !== 'approved' || $business->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business is not approved or inactive',
+                ], 400);
+            }
+
+            // Find or create business customer by email
+            $businessCustomer = BusinessCustomer::where('business_id', $business->id)
+                ->where('contact_email', $request->customer_email)
+                ->first();
+
+            if (!$businessCustomer) {
+                // Create new business customer
+                $businessCustomer = BusinessCustomer::create([
+                    'business_id' => $business->id,
+                    'business_name' => $request->business_name ?? 'Customer',
+                    'contact_email' => $request->customer_email,
+                    'contact_name' => $request->contact_name,
+                    'contact_phone' => $request->contact_phone,
+                    'address' => $request->address,
+                    'status' => 'active',
+                ]);
+            } else {
+                // Update existing business customer with provided information (if any)
+                $updateData = [];
+                if ($request->has('business_name') && $request->business_name) {
+                    $updateData['business_name'] = $request->business_name;
+                }
+                if ($request->has('contact_name') && $request->contact_name) {
+                    $updateData['contact_name'] = $request->contact_name;
+                }
+                if ($request->has('contact_phone') && $request->contact_phone) {
+                    $updateData['contact_phone'] = $request->contact_phone;
+                }
+                if ($request->has('address') && $request->address) {
+                    $updateData['address'] = $request->address;
+                }
+                
+                if (!empty($updateData)) {
+                    $businessCustomer->update($updateData);
+                }
+
+                // Check if customer is active
+                if ($businessCustomer->status !== 'active') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'The customer account is not active',
+                    ], 400);
+                }
+            }
+
+            // Get callback URL from request or business profile
+            $callbackUrl = $request->callback_url ?? $business->callback_url;
+
+            // Parse purchase date
+            $purchaseDate = $request->purchase_date 
+                ? \Carbon\Carbon::parse($request->purchase_date) 
+                : \Carbon\Carbon::now();
+
+            // Create invoice
+            $invoice = $this->invoiceService->createInvoiceForBusinessCustomer(
+                $businessCustomer,
+                $request->amount,
+                $business->business_name,
+                $purchaseDate,
+                null, // due_date will be calculated automatically
+                $business->id,
+                null, // redirect_url (not used for payment link)
+                $callbackUrl
+            );
+
+            // Create transaction record with items metadata
+            Transaction::create([
+                'customer_id' => $businessCustomer->linked_customer_id, // Will be null if not linked yet
+                'business_id' => $business->id,
+                'invoice_id' => $invoice->id,
+                'type' => 'credit_purchase',
+                'amount' => $invoice->principal_amount,
+                'metadata' => [
+                    'order_reference' => $request->order_reference,
+                    'items' => $request->items,
+                ],
+                'status' => 'completed',
+                'description' => $request->order_reference ? "Order: {$request->order_reference}" : "Invoice {$invoice->invoice_id}",
+                'processed_at' => now(),
+            ]);
+
+            // Generate payment link
+            $frontendUrl = env('FRONTEND_URL', 'https://fsscredit.foodstuff.store');
+            $invoiceLink = rtrim($frontendUrl, '/') . '/checkout/' . $invoice->slug;
+
+            // Send webhook notification
+            try {
+                $this->webhookService->sendWebhook($business, 'invoice.created', [
+                    'invoice_id' => $invoice->invoice_id,
+                    'slug' => $invoice->slug,
+                    'payment_link' => $invoiceLink,
+                    'payment_link_expires_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
+                    'amount' => $invoice->principal_amount,
+                    'status' => $invoice->status,
+                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                    'order_reference' => $request->order_reference,
+                    'items' => $request->items,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to send invoice created webhook: ' . $e->getMessage(), [
+                    'invoice_id' => $invoice->id,
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Invoice link generated successfully',
+                'invoice_link' => $invoiceLink,
+                'payment_link_expires_at' => $invoice->slug_expires_at ? $invoice->slug_expires_at->toIso8601String() : null,
+                'slug' => $invoice->slug,
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Create invoice link failed: ' . $e->getMessage(), [
+                'request' => $request->all(),
+            ]);
+            
+            if (isset($business)) {
+                try {
+                    $this->webhookService->sendError($business, [
+                        'error' => 'Invoice creation failed',
+                        'message' => $e->getMessage(),
+                        'customer_email' => $request->customer_email ?? null,
+                        'amount' => $request->amount ?? null,
+                    ]);
+                } catch (\Exception $webhookError) {
+                    Log::warning('Failed to send error webhook: ' . $webhookError->getMessage());
+                }
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create invoice link',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
 }
