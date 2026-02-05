@@ -311,9 +311,24 @@ class InvoiceCheckoutController extends Controller
     /**
      * Build callback URL with payment status and invoice information as query parameters
      * This is where the user gets redirected AFTER payment
+     * Priority: success_url/failed_url/cancel_url > callback_url with query params
      */
     private function buildCallbackUrlWithStatus(?string $baseUrl, string $status, Invoice $invoice, ?string $reason = null): ?string
     {
+        // Check for status-specific URLs first (use directly without query params)
+        if ($status === 'succeeded' && $invoice->success_url) {
+            return $invoice->success_url;
+        }
+        
+        if ($status === 'failed' && $invoice->failed_url) {
+            return $invoice->failed_url;
+        }
+        
+        if ($status === 'canceled' && $invoice->cancel_url) {
+            return $invoice->cancel_url;
+        }
+        
+        // Fall back to callback_url with query parameters
         if (!$baseUrl) {
             return null;
         }

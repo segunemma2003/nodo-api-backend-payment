@@ -297,6 +297,9 @@ class PayWithFscreditController extends Controller
             'purchase_date' => 'nullable|date',
             'order_reference' => 'nullable|string',
             'callback_url' => 'nullable|url|max:500',
+            'success_url' => 'nullable|url|max:500',
+            'cancel_url' => 'nullable|url|max:500',
+            'failed_url' => 'nullable|url|max:500',
             'items' => 'required|array|min:1',
             'items.*.name' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
@@ -383,7 +386,10 @@ class PayWithFscreditController extends Controller
                 null, // due_date will be calculated automatically
                 $business->id,
                 null, // redirect_url (not used for payment link)
-                $callbackUrl
+                $callbackUrl,
+                $request->success_url,
+                $request->cancel_url,
+                $request->failed_url
             );
 
             // Create transaction record with items metadata

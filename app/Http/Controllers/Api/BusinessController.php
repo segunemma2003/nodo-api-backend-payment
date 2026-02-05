@@ -202,6 +202,9 @@ class BusinessController extends Controller
             'due_date' => 'nullable|date',
             'description' => 'nullable|string',
             'callback_url' => 'nullable|url|max:500', // URL to redirect user after payment (with payment status)
+            'success_url' => 'nullable|url|max:500', // URL to redirect on successful payment
+            'cancel_url' => 'nullable|url|max:500', // URL to redirect on canceled payment
+            'failed_url' => 'nullable|url|max:500', // URL to redirect on failed payment
             'items' => 'nullable|array',
             'items.*.name' => 'required_with:items|string',
             'items.*.quantity' => 'required_with:items|integer|min:1',
@@ -291,7 +294,10 @@ class BusinessController extends Controller
             $request->due_date ? \Carbon\Carbon::parse($request->due_date) : null,
             $business->id,
             null, // redirect_url (not used for payment link)
-            $callbackUrl
+            $callbackUrl,
+            $request->success_url ?? null,
+            $request->cancel_url ?? null,
+            $request->failed_url ?? null
         );
 
         $transaction = Transaction::create([
