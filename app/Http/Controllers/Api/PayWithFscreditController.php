@@ -324,10 +324,24 @@ class PayWithFscreditController extends Controller
                 ], 400);
             }
 
-            // Find or create business customer by email
+            // Find or create business customer
+            // First try to find by contact_email
             $businessCustomer = BusinessCustomer::where('business_id', $business->id)
                 ->where('contact_email', $request->customer_email)
                 ->first();
+
+            // If not found by email, try to find by business_name (to avoid unique constraint violation)
+            if (!$businessCustomer && $request->business_name) {
+                $businessCustomer = BusinessCustomer::where('business_id', $business->id)
+                    ->where('business_name', $request->business_name)
+                    ->first();
+                
+                // If found by business_name, update contact_email if different
+                if ($businessCustomer && $businessCustomer->contact_email !== $request->customer_email) {
+                    $businessCustomer->contact_email = $request->customer_email;
+                    $businessCustomer->save();
+                }
+            }
 
             if (!$businessCustomer) {
                 // Create new business customer
