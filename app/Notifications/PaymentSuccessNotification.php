@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Middleware\RateLimited;
 
 class PaymentSuccessNotification extends Notification implements ShouldQueue
 {
@@ -21,6 +22,14 @@ class PaymentSuccessNotification extends Notification implements ShouldQueue
         $this->invoice = $invoice;
         $this->amount = $amount;
         $this->type = $type;
+    }
+
+    /**
+     * Get the middleware the job should pass through.
+     */
+    public function middleware()
+    {
+        return [new RateLimited('emails')];
     }
 
     public function via($notifiable)

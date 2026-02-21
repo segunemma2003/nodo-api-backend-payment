@@ -333,7 +333,7 @@ class BusinessController extends Controller
             }
         }
 
-        // Send email to accounting team
+        // Send email to accounting team (rate limiting handled by middleware)
         try {
             Notification::route('mail', 'accounting@foodstuff.store')
                 ->notify(new InvoiceCreatedNotification($invoice));

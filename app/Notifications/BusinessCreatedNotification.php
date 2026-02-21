@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Middleware\RateLimited;
 
 class BusinessCreatedNotification extends Notification implements ShouldQueue
 {
@@ -16,6 +17,14 @@ class BusinessCreatedNotification extends Notification implements ShouldQueue
     public function __construct($password)
     {
         $this->password = $password;
+    }
+
+    /**
+     * Get the middleware the job should pass through.
+     */
+    public function middleware()
+    {
+        return [new RateLimited('emails')];
     }
 
     public function via($notifiable)

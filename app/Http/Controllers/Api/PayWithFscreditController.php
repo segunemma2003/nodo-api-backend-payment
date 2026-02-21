@@ -688,7 +688,7 @@ class PayWithFscreditController extends Controller
             Cache::forget('customer_invoices_' . $customer->id);
             Cache::forget('admin_customer_' . $customer->id);
 
-            // Send email to customer
+            // Send email to customer (rate limiting handled by middleware)
             try {
                 Notification::route('mail', $customer->email)
                     ->notify(new InvoiceCreatedNotification($invoice, $customer->email));
@@ -699,7 +699,7 @@ class PayWithFscreditController extends Controller
                 ]);
             }
 
-            // Send email to business
+            // Send email to business (rate limiting handled by middleware)
             try {
                 Notification::route('mail', $business->email)
                     ->notify(new InvoiceCreatedNotification($invoice));
