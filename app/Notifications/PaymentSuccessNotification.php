@@ -55,7 +55,7 @@ class PaymentSuccessNotification extends Notification implements ShouldQueue
             ->line('**Invoice ID:** ' . $this->invoice->invoice_id)
             ->line('**Amount:** ₦' . number_format($this->amount, 2))
             ->line('**Customer:** ' . $this->invoice->customer->business_name)
-            ->line('**Due Date:** ' . $this->invoice->due_date->format('F d, Y'))
+            ->line('**Due Date:** ' . ($this->invoice->due_date ? $this->invoice->due_date->format('F d, Y') : 'N/A'))
             ->line('Payment has been automatically transferred to your account.')
             ->action('View Invoice', url('/invoices/' . $this->invoice->invoice_id))
             ->line('Thank you for using FSCredit!');
@@ -70,7 +70,7 @@ class PaymentSuccessNotification extends Notification implements ShouldQueue
             ->line('**Invoice ID:** ' . $this->invoice->invoice_id)
             ->line('**Amount Paid:** ₦' . number_format($this->amount, 2))
             ->line('**Remaining Balance:** ₦' . number_format($this->invoice->remaining_balance, 2))
-            ->line('**Due Date:** ' . $this->invoice->due_date->format('F d, Y'))
+            ->line('**Due Date:** ' . ($this->invoice->due_date ? $this->invoice->due_date->format('F d, Y') : 'N/A'))
             ->action('View Invoice', url('/invoices/' . $this->invoice->invoice_id))
             ->line('Thank you for your payment!');
     }
