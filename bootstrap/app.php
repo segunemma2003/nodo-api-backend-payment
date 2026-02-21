@@ -31,10 +31,29 @@ return Application::configure(basePath: dirname(__DIR__))
         // Handle validation exceptions for API routes
         $exceptions->render(function (\Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
+                $errors = $e->errors();
+                
+                // Build explicit error message from validation errors
+                $errorMessages = [];
+                foreach ($errors as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $errorMessages[] = ucfirst($field) . ': ' . $message;
+                    }
+                }
+                
+                // Create a more explicit message
+                $message = 'Validation failed. ' . implode(' ', $errorMessages);
+                
+                // If there are too many errors, use a summary
+                if (count($errorMessages) > 3) {
+                    $fieldCount = count($errors);
+                    $message = "Validation failed. Please check the following {$fieldCount} field(s): " . implode(', ', array_keys($errors));
+                }
+                
                 return response()->json([
                     'success' => false,
-                    'message' => 'The given data was invalid.',
-                    'errors' => $e->errors(),
+                    'message' => $message,
+                    'errors' => $errors,
                 ], 422);
             }
         });
