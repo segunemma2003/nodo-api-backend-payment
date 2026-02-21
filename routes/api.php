@@ -136,6 +136,7 @@ Route::prefix('pay-with-fscredit')->middleware('api.token')->group(function () {
     Route::post('/check-credit', [PayWithFscreditController::class, 'checkCredit']);
     Route::get('/customer', [PayWithFscreditController::class, 'getCustomerDetails']);
     Route::post('/create-invoice-link', [PayWithFscreditController::class, 'createInvoiceLink']);
+    Route::post('/process-direct-payment', [PayWithFscreditController::class, 'processDirectPayment']);
 });
 
 // Payment Processing Routes

@@ -50,12 +50,30 @@ class InvoiceCreatedNotification extends Notification implements ShouldQueue
 
         $mail->line('**Invoice Details:**')
             ->line('**Invoice ID:** ' . $this->invoice->invoice_id)
-            ->line('**Amount:** ₦' . number_format($this->invoice->principal_amount, 2))
+            ->line('**Principal Amount:** ₦' . number_format($this->invoice->principal_amount, 2))
+            ->line('**Interest Amount:** ₦' . number_format($this->invoice->interest_amount, 2))
             ->line('**Total Amount:** ₦' . number_format($this->invoice->total_amount, 2))
             ->line('**Purchase Date:** ' . ($this->invoice->purchase_date ? $this->invoice->purchase_date->format('F d, Y') : 'N/A'))
-            ->line('**Due Date:** ' . ($this->invoice->due_date ? $this->invoice->due_date->format('F d, Y') : 'N/A'))
-            ->line('**Payment Plan Duration:** ' . $this->invoice->payment_plan_duration . ' months')
+            ->line('**Due Date:** ' . ($this->invoice->due_date ? $this->invoice->due_date->format('F d, Y') : 'N/A'));
+        
+        // Show grace period end date if available
+        if ($this->invoice->grace_period_end_date) {
+            $mail->line('**Grace Period Ends:** ' . $this->invoice->grace_period_end_date->format('F d, Y'));
+        }
+        
+        $mail->line('**Payment Plan Duration:** ' . $this->invoice->payment_plan_duration . ' months')
+            ->line('**Interest Rate:** ' . round(0.035 * $this->invoice->payment_plan_duration * 100, 2) . '% (' . $this->invoice->payment_plan_duration . ' months × 3.5% per month)')
             ->line('**Status:** ' . ucfirst($this->invoice->status));
+        
+        // If invoice is paid by FSCredit but customer still owes, show repayment info
+        if ($this->invoice->status === 'paid' && $this->invoice->credit_repaid_status === 'pending') {
+            $mail->line('')
+                ->line('**⚠️ Payment Information:**')
+                ->line('This invoice has been paid by FSCredit on your behalf.')
+                ->line('**Amount Owed to FSCredit:** ₦' . number_format($this->invoice->total_amount, 2))
+                ->line('**Repayment Due Date:** ' . ($this->invoice->due_date ? $this->invoice->due_date->format('F d, Y') : 'N/A'))
+                ->line('Please ensure you repay the full amount (₦' . number_format($this->invoice->total_amount, 2) . ') to FSCredit by the due date.');
+        }
 
         if ($supplier) {
             $mail->line('**Supplier:** ' . $supplier->business_name)

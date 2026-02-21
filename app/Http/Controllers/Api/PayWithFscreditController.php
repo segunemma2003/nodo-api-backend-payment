@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\BusinessCustomer;
 use App\Models\Customer;
 use App\Models\Transaction;
+use App\Notifications\InvoiceCreatedNotification;
 use App\Services\InvoiceService;
 use App\Services\InterestService;
 use App\Services\PaymentService;
@@ -15,6 +16,7 @@ use App\Services\WebhookService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class PayWithFscreditController extends Controller
 {
@@ -475,6 +477,339 @@ class PayWithFscreditController extends Controller
                 'message' => 'Failed to create invoice link',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Process payment directly from customer balance
+     * Payment gateway uses this API to charge customer's FSCredit balance
+     * Checks customer email, available balance, calculates interest based on customer's payment plan duration,
+     * withdraws from balance, and sends emails to both customer and business
+     */
+    public function processDirectPayment(Request $request)
+    {
+        // Authentication handled by middleware
+
+        $request->validate([
+            'customer_email' => 'required|email|exists:customers,email',
+            'amount' => 'required|numeric|min:0.01',
+            'purchase_date' => 'nullable|date',
+            'order_reference' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.name' => 'required|string',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'required|numeric|min:0.01',
+            'items.*.description' => 'nullable|string',
+            'items.*.uom' => 'nullable|string',
+        ]);
+
+        try {
+            // Business is extracted from API token by ApiTokenAuth middleware
+            // The middleware validates the token and attaches the business to the request
+            $business = $request->input('business');
+            
+            if (!$business) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business not found. Invalid or missing API token.',
+                    'details' => [
+                        'error' => 'BUSINESS_NOT_FOUND',
+                    ],
+                ], 401);
+            }
+
+            if ($business->approval_status !== 'approved' || $business->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business is not approved or inactive',
+                    'details' => [
+                        'error' => 'BUSINESS_NOT_APPROVED_OR_INACTIVE',
+                        'approval_status' => $business->approval_status,
+                        'status' => $business->status,
+                    ],
+                ], 400);
+            }
+
+            // Find customer by email
+            $customer = Customer::where('email', $request->customer_email)->first();
+            
+            if (!$customer) {
+                $this->sendPaymentFailedWebhook($business, [
+                    'customer_email' => $request->customer_email,
+                    'amount' => $request->amount,
+                    'reason' => 'Customer not found with the provided email',
+                    'order_reference' => $request->order_reference ?? null,
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer not found with the provided email',
+                    'details' => [
+                        'error' => 'CUSTOMER_NOT_FOUND',
+                        'email' => $request->customer_email,
+                    ],
+                ], 404);
+            }
+
+            // Check customer approval status
+            if ($customer->approval_status !== 'approved') {
+                $this->sendPaymentFailedWebhook($business, [
+                    'customer_email' => $customer->email,
+                    'account_number' => $customer->account_number,
+                    'amount' => $request->amount,
+                    'reason' => 'Customer account is pending approval',
+                    'order_reference' => $request->order_reference ?? null,
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer account is pending approval',
+                    'details' => [
+                        'error' => 'CUSTOMER_NOT_APPROVED',
+                        'approval_status' => $customer->approval_status,
+                    ],
+                ], 400);
+            }
+
+            // Check customer status
+            if ($customer->status !== 'active') {
+                $this->sendPaymentFailedWebhook($business, [
+                    'customer_email' => $customer->email,
+                    'account_number' => $customer->account_number,
+                    'amount' => $request->amount,
+                    'reason' => 'Customer account is not active',
+                    'order_reference' => $request->order_reference ?? null,
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer account is not active',
+                    'details' => [
+                        'error' => 'CUSTOMER_INACTIVE',
+                        'status' => $customer->status,
+                    ],
+                ], 400);
+            }
+
+            // Update customer balances to get latest available balance
+            $customer->updateBalances();
+
+            // Check available balance
+            if (!$this->invoiceService->hasAvailableCredit($customer, $request->amount)) {
+                $this->sendPaymentFailedWebhook($business, [
+                    'customer_email' => $customer->email,
+                    'account_number' => $customer->account_number,
+                    'amount' => $request->amount,
+                    'reason' => 'Insufficient credit available',
+                    'available_balance' => $customer->available_balance,
+                    'order_reference' => $request->order_reference ?? null,
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient credit available',
+                    'details' => [
+                        'error' => 'INSUFFICIENT_BALANCE',
+                        'available_balance' => $customer->available_balance,
+                        'requested_amount' => $request->amount,
+                        'credit_limit' => $customer->credit_limit,
+                        'current_balance' => $customer->current_balance,
+                    ],
+                ], 400);
+            }
+
+            // Parse purchase date
+            $purchaseDate = $request->purchase_date 
+                ? \Carbon\Carbon::parse($request->purchase_date) 
+                : \Carbon\Carbon::now();
+
+            // Get payment plan duration from customer and calculate interest
+            $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+            $dueDate = $purchaseDate->copy()->addMonths($paymentPlanDuration);
+
+            // Create invoice (this will withdraw from balance when status is updated)
+            $invoice = $this->invoiceService->createInvoice(
+                $customer,
+                $request->amount,
+                $business->business_name,
+                $purchaseDate,
+                $dueDate,
+                $business->id
+            );
+
+            // Update invoice with calculated interest (3.5% * payment_plan_duration months)
+            $this->interestService->updateInvoiceStatus($invoice);
+            $invoice->refresh();
+
+            // Platform lends money to customer to pay business immediately
+            // Platform pays business: principal_amount
+            // Customer owes platform: total_amount (principal + interest)
+            $invoice->paid_amount = $invoice->principal_amount; // Platform paid business this amount
+            $invoice->status = 'paid'; // Business sees invoice as paid (FSCredit paid them)
+            
+            // Set credit repayment status - customer still owes full amount to FSCredit
+            $invoice->credit_repaid_status = 'pending';
+            $invoice->credit_repaid_amount = 0;
+            // remaining_balance will be calculated by updateBalances() based on credit_repaid_amount
+            // For now, customer owes the full total_amount
+            $invoice->remaining_balance = $invoice->total_amount; // Customer owes full amount (principal + interest)
+            
+            $invoice->save();
+            $invoice->refresh();
+
+            // Update customer balances (this withdraws from available_balance)
+            // For paid invoices, balance is calculated using creditNotRepaid (total_amount - credit_repaid_amount)
+            // Since credit_repaid_amount = 0, customer owes full total_amount
+            $customer->updateBalances();
+
+            // Process payout to business if applicable
+            if ($invoice->supplier_id && !$invoice->payouts()->exists()) {
+                $this->paymentService->processPayout($invoice);
+            }
+
+            // Create transaction record with items metadata
+            Transaction::create([
+                'customer_id' => $customer->id,
+                'business_id' => $business->id,
+                'invoice_id' => $invoice->id,
+                'type' => 'credit_purchase',
+                'amount' => $invoice->principal_amount,
+                'status' => 'completed',
+                'description' => $request->order_reference ? "Order: {$request->order_reference}" : "Invoice {$invoice->invoice_id}",
+                'metadata' => [
+                    'order_reference' => $request->order_reference,
+                    'items' => $request->items,
+                ],
+                'processed_at' => now(),
+            ]);
+
+            // Clear cache
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+            Cache::forget('admin_customer_' . $customer->id);
+
+            // Send email to customer
+            try {
+                Notification::route('mail', $customer->email)
+                    ->notify(new InvoiceCreatedNotification($invoice, $customer->email));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send invoice creation email to customer: ' . $e->getMessage(), [
+                    'invoice_id' => $invoice->id,
+                    'email' => $customer->email,
+                ]);
+            }
+
+            // Send email to business
+            try {
+                Notification::route('mail', $business->email)
+                    ->notify(new InvoiceCreatedNotification($invoice));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send invoice creation email to business: ' . $e->getMessage(), [
+                    'invoice_id' => $invoice->id,
+                    'email' => $business->email,
+                ]);
+            }
+
+            // Send payment succeeded webhook
+            try {
+                $this->webhookService->sendWebhook($business, 'payment.succeeded', [
+                    'invoice_id' => $invoice->invoice_id,
+                    'status' => 'succeeded',
+                    'amount' => $invoice->principal_amount,
+                    'interest_amount' => $invoice->interest_amount,
+                    'total_amount' => $invoice->total_amount,
+                    'paid_amount' => $invoice->principal_amount, // Full principal amount is charged immediately
+                    'remaining_balance' => $invoice->total_amount, // Customer owes the total (principal + interest)
+                    'customer_email' => $customer->email,
+                    'customer_name' => $customer->business_name,
+                    'account_number' => $customer->account_number,
+                    'order_reference' => $request->order_reference,
+                    'items' => $request->items,
+                    'paid_at' => now()->toIso8601String(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to send payment succeeded webhook: ' . $e->getMessage(), [
+                    'invoice_id' => $invoice->id,
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment processed successfully',
+                'invoice' => [
+                    'invoice_id' => $invoice->invoice_id,
+                    'principal_amount' => $invoice->principal_amount,
+                    'interest_amount' => $invoice->interest_amount,
+                    'total_amount' => $invoice->total_amount,
+                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : null,
+                    'grace_period_end_date' => $invoice->grace_period_end_date ? $invoice->grace_period_end_date->format('Y-m-d') : null,
+                    'status' => $invoice->status,
+                    'payment_plan_duration' => $paymentPlanDuration,
+                    'interest_rate' => round(0.035 * $paymentPlanDuration * 100, 2) . '%',
+                ],
+                'order' => [
+                    'order_reference' => $request->order_reference,
+                    'items' => $request->items,
+                ],
+                'customer' => [
+                    'account_number' => $customer->account_number,
+                    'email' => $customer->email,
+                    'available_balance' => $customer->fresh()->available_balance,
+                    'current_balance' => $customer->fresh()->current_balance,
+                    'credit_limit' => $customer->credit_limit,
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Direct payment processing failed: ' . $e->getMessage(), [
+                'request' => $request->all(),
+            ]);
+            
+            if (isset($business)) {
+                $this->sendPaymentFailedWebhook($business, [
+                    'customer_email' => $request->customer_email ?? null,
+                    'amount' => $request->amount ?? null,
+                    'reason' => 'Payment processing failed: ' . $e->getMessage(),
+                    'order_reference' => $request->order_reference ?? null,
+                ]);
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process payment',
+                'details' => [
+                    'error' => 'PROCESSING_ERROR',
+                    'error_message' => $e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * Helper method to send payment failed webhook
+     */
+    private function sendPaymentFailedWebhook(Business $business, array $data): void
+    {
+        if (!$business->webhook_url) {
+            return;
+        }
+
+        try {
+            $this->webhookService->sendWebhook($business, 'payment.failed', [
+                'status' => 'failed',
+                'amount' => $data['amount'] ?? null,
+                'reason' => $data['reason'] ?? 'Payment failed',
+                'customer_email' => $data['customer_email'] ?? null,
+                'customer_name' => $data['customer_name'] ?? null,
+                'account_number' => $data['account_number'] ?? null,
+                'available_balance' => $data['available_balance'] ?? null,
+                'order_reference' => $data['order_reference'] ?? null,
+                'failed_at' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to send payment failed webhook: ' . $e->getMessage(), [
+                'business_id' => $business->id,
+            ]);
         }
     }
 
