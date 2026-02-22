@@ -688,17 +688,7 @@ class PayWithFscreditController extends Controller
             Cache::forget('customer_invoices_' . $customer->id);
             Cache::forget('admin_customer_' . $customer->id);
 
-            // Send email to customer (rate limiting handled by middleware)
-            try {
-                Notification::route('mail', $customer->email)
-                    ->notify(new InvoiceCreatedNotification($invoice, $customer->email));
-            } catch (\Exception $e) {
-                Log::warning('Failed to send invoice creation email to customer: ' . $e->getMessage(), [
-                    'invoice_id' => $invoice->id,
-                    'email' => $customer->email,
-                ]);
-            }
-
+            // Note: Customer email notification disabled for direct payments for now
             // Send email to business (rate limiting handled by middleware)
             try {
                 Notification::route('mail', $business->email)
