@@ -53,12 +53,20 @@ class AdminController extends Controller
             'phone' => 'nullable|string',
             'address' => 'nullable|string',
             'minimum_purchase_amount' => 'required|numeric|min:0',
-            'payment_plan_duration' => 'required|integer|min:1',
+            'payment_plan_duration' => 'required|integer|min:1', // Accept days
+            'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
             'virtual_account_number' => 'nullable|string|unique:customers,virtual_account_number',
             'virtual_account_bank' => 'nullable|string',
             'kyc_documents' => 'nullable|array',
             'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
+
+        // Convert days to months if payment_plan_duration is in days
+        $paymentPlanDuration = $request->payment_plan_duration;
+        $unit = $request->payment_plan_duration_unit ?? 'days';
+        if ($unit === 'days') {
+            $paymentPlanDuration = \App\Services\InterestService::daysToMonths($paymentPlanDuration);
+        }
 
         $customer = Customer::create([
             'business_name' => $request->business_name,
@@ -68,7 +76,7 @@ class AdminController extends Controller
             'phone' => $request->phone,
             'address' => $request->address,
             'minimum_purchase_amount' => $request->minimum_purchase_amount,
-            'payment_plan_duration' => $request->payment_plan_duration,
+            'payment_plan_duration' => $paymentPlanDuration, // Stored as months
             'virtual_account_number' => $request->virtual_account_number,
             'virtual_account_bank' => $request->virtual_account_bank,
             'approval_status' => 'approved', // Admin-created customers are auto-approved
@@ -77,19 +85,29 @@ class AdminController extends Controller
 
         // Dispatch job to create Paystack virtual account asynchronously if not provided manually
         // This doesn't block the customer creation process
+        // Matches the behavior of normal customer registration
         if (!$request->virtual_account_number) {
-            $paystackService = app(\App\Services\PaystackService::class);
-            
-            if ($paystackService->isConfigured()) {
+            // Use the injected PaystackService (same as normal registration)
+            if ($this->paystackService->isConfigured()) {
                 CreateVirtualAccountJob::dispatch($customer);
                 Log::info('Virtual account creation job dispatched for admin-created customer', [
                     'customer_id' => $customer->id,
+                    'email' => $customer->email,
                 ]);
             } else {
                 Log::info('Paystack not configured, skipping virtual account creation for admin-created customer', [
                     'customer_id' => $customer->id,
+                    'email' => $customer->email,
                 ]);
             }
+        } else {
+            // Virtual account provided manually - log it
+            Log::info('Virtual account provided manually for admin-created customer', [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+                'virtual_account_number' => $request->virtual_account_number,
+                'virtual_account_bank' => $request->virtual_account_bank,
+            ]);
         }
 
         // Calculate and set credit limit
@@ -344,7 +362,8 @@ class AdminController extends Controller
             'phone' => 'nullable|string',
             'address' => 'nullable|string',
             'minimum_purchase_amount' => 'sometimes|numeric|min:0',
-            'payment_plan_duration' => 'sometimes|integer|min:1',
+            'payment_plan_duration' => 'sometimes|integer|min:1', // Accept days
+            'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
             'virtual_account_number' => 'nullable|string|unique:customers,virtual_account_number,' . $id,
             'virtual_account_bank' => 'nullable|string',
             'kyc_documents' => 'nullable|array',
@@ -373,7 +392,13 @@ class AdminController extends Controller
             $customer->minimum_purchase_amount = $request->minimum_purchase_amount;
         }
         if ($request->has('payment_plan_duration')) {
-            $customer->payment_plan_duration = $request->payment_plan_duration;
+            // Convert days to months if payment_plan_duration is in days
+            $paymentPlanDuration = $request->payment_plan_duration;
+            $unit = $request->payment_plan_duration_unit ?? 'days';
+            if ($unit === 'days') {
+                $paymentPlanDuration = \App\Services\InterestService::daysToMonths($paymentPlanDuration);
+            }
+            $customer->payment_plan_duration = $paymentPlanDuration; // Stored as months
         }
         if ($request->has('virtual_account_number')) {
             $customer->virtual_account_number = $request->virtual_account_number;
@@ -1369,6 +1394,354 @@ class AdminController extends Controller
             'jobs_queued' => $queued,
             'status' => 'queued',
         ], 202);
+    }
+
+    /**
+     * Update customer's owed amount directly (without invoice)
+     * Allows admin to adjust the total amount owed by a customer
+     */
+    public function updateCustomerOwedAmount(Request $request, $customerId)
+    {
+        $request->validate([
+            'amount_owed' => 'required|numeric|min:0',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $customer = Customer::findOrFail($customerId);
+
+        DB::beginTransaction();
+        try {
+            // Get current balance before update
+            $customer->updateBalances();
+            $previousCurrentBalance = $customer->current_balance;
+            
+            // Calculate the difference
+            $newAmountOwed = $request->amount_owed;
+            $difference = $newAmountOwed - $previousCurrentBalance;
+
+            // If there's a difference, we need to create or adjust an admin adjustment invoice
+            if (abs($difference) > 0.01) { // Only if difference is significant
+                // Find or create an admin adjustment invoice
+                $adjustmentInvoice = Invoice::where('customer_id', $customerId)
+                    ->where('supplier_name', 'Admin Adjustment')
+                    ->where(function($query) {
+                        $query->where('status', '!=', 'paid')
+                              ->orWhere(function($q) {
+                                  $q->where('status', 'paid')
+                                    ->where(function($subQ) {
+                                        $subQ->whereNull('credit_repaid_status')
+                                             ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+                                    });
+                              });
+                    })
+                    ->first();
+
+                if ($difference > 0) {
+                    // Positive difference: Customer owes more (add charges)
+                    if (!$adjustmentInvoice) {
+                        // Create a new admin adjustment invoice
+                        $adjustmentInvoice = Invoice::create([
+                            'customer_id' => $customerId,
+                            'supplier_id' => null,
+                            'supplier_name' => 'Admin Adjustment',
+                            'principal_amount' => $difference,
+                            'interest_amount' => 0,
+                            'total_amount' => $difference,
+                            'paid_amount' => 0,
+                            'remaining_balance' => $difference,
+                            'purchase_date' => now(),
+                            'payment_plan_duration' => 0, // No payment plan for adjustments
+                            'due_date' => null,
+                            'status' => 'in_grace', // Will be included in balance calculation
+                            'notes' => $request->reason ?? 'Admin adjustment - added charges',
+                        ]);
+                    } else {
+                        // Update existing adjustment invoice
+                        $adjustmentInvoice->principal_amount = $difference;
+                        $adjustmentInvoice->total_amount = $difference;
+                        $adjustmentInvoice->remaining_balance = $difference;
+                        $adjustmentInvoice->status = 'in_grace';
+                        if ($request->reason) {
+                            $adjustmentInvoice->notes = $request->reason;
+                        }
+                        $adjustmentInvoice->save();
+                    }
+                } else {
+                    // Negative difference: Customer owes less (apply credit/discount)
+                    // Create a credit adjustment invoice that's marked as paid
+                    // This reduces the balance by increasing credit_repaid_amount on paid invoices
+                    if (!$adjustmentInvoice) {
+                        // Create a credit memo invoice (marked as paid immediately)
+                        $adjustmentInvoice = Invoice::create([
+                            'customer_id' => $customerId,
+                            'supplier_id' => null,
+                            'supplier_name' => 'Admin Adjustment',
+                            'principal_amount' => abs($difference),
+                            'interest_amount' => 0,
+                            'total_amount' => abs($difference),
+                            'paid_amount' => abs($difference),
+                            'remaining_balance' => 0,
+                            'purchase_date' => now(),
+                            'payment_plan_duration' => 0,
+                            'due_date' => null,
+                            'status' => 'paid',
+                            'credit_repaid_status' => 'fully_paid',
+                            'credit_repaid_amount' => abs($difference),
+                            'credit_repaid_at' => now(),
+                            'notes' => $request->reason ?? 'Admin adjustment - credit applied',
+                        ]);
+                    } else {
+                        // For negative adjustments, we need to reduce existing invoices
+                        // Find the oldest unpaid invoice and reduce its balance
+                        $unpaidInvoice = $customer->invoices()
+                            ->where('status', '!=', 'paid')
+                            ->where('remaining_balance', '>', 0)
+                            ->orderBy('due_date', 'asc')
+                            ->first();
+                        
+                        if ($unpaidInvoice) {
+                            $reductionAmount = min(abs($difference), $unpaidInvoice->remaining_balance);
+                            $unpaidInvoice->remaining_balance -= $reductionAmount;
+                            $unpaidInvoice->paid_amount += $reductionAmount;
+                            if ($unpaidInvoice->remaining_balance <= 0) {
+                                $unpaidInvoice->status = 'paid';
+                                $unpaidInvoice->remaining_balance = 0;
+                            }
+                            $unpaidInvoice->save();
+                        }
+                        
+                        // If still need to reduce more, reduce credit_repaid_amount on paid invoices
+                        $remainingReduction = abs($difference) - ($reductionAmount ?? 0);
+                        if ($remainingReduction > 0) {
+                            $paidInvoice = $customer->invoices()
+                                ->where('status', 'paid')
+                                ->where(function($q) {
+                                    $q->whereNull('credit_repaid_status')
+                                      ->orWhere('credit_repaid_status', '!=', 'fully_paid');
+                                })
+                                ->whereRaw('(total_amount - COALESCE(credit_repaid_amount, 0)) > 0')
+                                ->orderBy('due_date', 'asc')
+                                ->first();
+                            
+                            if ($paidInvoice) {
+                                $currentOwed = $paidInvoice->total_amount - ($paidInvoice->credit_repaid_amount ?? 0);
+                                $reductionAmount = min($remainingReduction, $currentOwed);
+                                $paidInvoice->credit_repaid_amount = ($paidInvoice->credit_repaid_amount ?? 0) + $reductionAmount;
+                                
+                                if ($paidInvoice->credit_repaid_amount >= $paidInvoice->total_amount) {
+                                    $paidInvoice->credit_repaid_status = 'fully_paid';
+                                    $paidInvoice->credit_repaid_at = now();
+                                    $paidInvoice->credit_repaid_amount = $paidInvoice->total_amount;
+                                } else {
+                                    $paidInvoice->credit_repaid_status = 'partially_paid';
+                                }
+                                $paidInvoice->save();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Recalculate customer balances
+            $customer->updateBalances();
+            $customer->refresh();
+
+            // Log the adjustment
+            Log::info('Admin updated customer owed amount directly', [
+                'admin_id' => $request->user()?->id,
+                'customer_id' => $customer->id,
+                'previous_current_balance' => $previousCurrentBalance,
+                'new_amount_owed' => $newAmountOwed,
+                'difference' => $difference,
+                'reason' => $request->reason,
+            ]);
+
+            // Clear caches
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+            Cache::forget('admin_customer_' . $customer->id);
+            Cache::forget('admin_dashboard_stats');
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer owed amount updated successfully',
+                'customer' => [
+                    'id' => $customer->id,
+                    'account_number' => $customer->account_number,
+                    'business_name' => $customer->business_name,
+                    'credit_limit' => $customer->credit_limit,
+                    'previous_current_balance' => $previousCurrentBalance,
+                    'new_current_balance' => $customer->current_balance,
+                    'new_available_balance' => $customer->available_balance,
+                    'amount_owed' => $customer->current_balance,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update customer owed amount: ' . $e->getMessage(), [
+                'customer_id' => $customerId,
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update customer owed amount: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Update customer's owed amount for a specific invoice
+     * Allows admin to adjust remaining_balance or credit_repaid_amount
+     */
+    public function updateCustomerInvoiceOwedAmount(Request $request, $customerId, $invoiceId)
+    {
+        $request->validate([
+            'remaining_balance' => 'nullable|numeric|min:0',
+            'credit_repaid_amount' => 'nullable|numeric|min:0',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $customer = Customer::findOrFail($customerId);
+        $invoice = Invoice::where('id', $invoiceId)
+            ->where('customer_id', $customerId)
+            ->firstOrFail();
+
+        DB::beginTransaction();
+        try {
+            $previousRemainingBalance = $invoice->remaining_balance;
+            $previousCreditRepaidAmount = $invoice->credit_repaid_amount ?? 0;
+
+            // Update remaining_balance if provided
+            if ($request->has('remaining_balance')) {
+                $newRemainingBalance = $request->remaining_balance;
+                $invoice->remaining_balance = $newRemainingBalance;
+                
+                // Update invoice status based on remaining balance
+                if ($newRemainingBalance == 0) {
+                    // Fully paid - mark as paid
+                    if ($invoice->status !== 'paid') {
+                        $invoice->status = 'paid';
+                        $invoice->paid_amount = $invoice->total_amount;
+                    }
+                } elseif ($invoice->status === 'paid' && $newRemainingBalance > 0) {
+                    // Was paid but now has balance - change status back to pending/in_grace
+                    // This handles cases where admin increases the owed amount
+                    if ($invoice->due_date) {
+                        $now = \Carbon\Carbon::now();
+                        $dueDate = \Carbon\Carbon::parse($invoice->due_date);
+                        if ($now->lt($dueDate)) {
+                            $invoice->status = 'pending';
+                        } else {
+                            $invoice->status = 'in_grace';
+                        }
+                    } else {
+                        $invoice->status = 'pending';
+                    }
+                    // Adjust paid_amount if needed
+                    if ($invoice->paid_amount > $invoice->total_amount - $newRemainingBalance) {
+                        $invoice->paid_amount = max(0, $invoice->total_amount - $newRemainingBalance);
+                    }
+                }
+            }
+
+            // Update credit_repaid_amount if provided
+            if ($request->has('credit_repaid_amount')) {
+                $newCreditRepaidAmount = $request->credit_repaid_amount;
+                
+                // Ensure credit_repaid_amount doesn't exceed total_amount
+                if ($newCreditRepaidAmount > $invoice->total_amount) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Credit repaid amount cannot exceed total amount',
+                        'details' => [
+                            'total_amount' => $invoice->total_amount,
+                            'requested_credit_repaid_amount' => $newCreditRepaidAmount,
+                        ],
+                    ], 400);
+                }
+
+                $invoice->credit_repaid_amount = $newCreditRepaidAmount;
+
+                // Update credit_repaid_status based on amount
+                if ($newCreditRepaidAmount >= $invoice->total_amount) {
+                    $invoice->credit_repaid_status = 'fully_paid';
+                    $invoice->credit_repaid_at = now();
+                    $invoice->credit_repaid_amount = $invoice->total_amount;
+                } elseif ($newCreditRepaidAmount > 0) {
+                    $invoice->credit_repaid_status = 'partially_paid';
+                } else {
+                    $invoice->credit_repaid_status = 'pending';
+                }
+
+                // Update remaining_balance for paid invoices based on credit_repaid_amount
+                if ($invoice->status === 'paid') {
+                    $invoice->remaining_balance = max(0, $invoice->total_amount - $newCreditRepaidAmount);
+                }
+            }
+
+            $invoice->save();
+
+            // Update customer balances
+            $customer->updateBalances();
+
+            // Log the adjustment
+            Log::info('Admin updated customer owed amount', [
+                'admin_id' => $request->user()?->id,
+                'customer_id' => $customer->id,
+                'invoice_id' => $invoice->id,
+                'previous_remaining_balance' => $previousRemainingBalance,
+                'new_remaining_balance' => $invoice->remaining_balance,
+                'previous_credit_repaid_amount' => $previousCreditRepaidAmount,
+                'new_credit_repaid_amount' => $invoice->credit_repaid_amount,
+                'reason' => $request->reason,
+            ]);
+
+            // Clear caches
+            Cache::forget('customer_credit_' . $customer->id);
+            Cache::forget('customer_invoices_' . $customer->id);
+            Cache::forget('admin_customer_' . $customer->id);
+            Cache::forget('admin_dashboard_stats');
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer owed amount updated successfully',
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_id' => $invoice->invoice_id,
+                    'principal_amount' => $invoice->principal_amount,
+                    'interest_amount' => $invoice->interest_amount,
+                    'total_amount' => $invoice->total_amount,
+                    'paid_amount' => $invoice->paid_amount,
+                    'remaining_balance' => $invoice->remaining_balance,
+                    'credit_repaid_amount' => $invoice->credit_repaid_amount,
+                    'credit_repaid_status' => $invoice->credit_repaid_status,
+                    'status' => $invoice->status,
+                ],
+                'customer' => [
+                    'id' => $customer->id,
+                    'account_number' => $customer->account_number,
+                    'current_balance' => $customer->current_balance,
+                    'available_balance' => $customer->available_balance,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update customer owed amount: ' . $e->getMessage(), [
+                'customer_id' => $customerId,
+                'invoice_id' => $invoiceId,
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update customer owed amount: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

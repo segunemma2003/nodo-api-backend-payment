@@ -9,11 +9,22 @@ class InterestService
 {
     const MONTHLY_INTEREST_RATE = 0.035; // 3.5%
     const GRACE_PERIOD_MONTHS = 1; // 1 month grace period after due date
+    const DAYS_PER_MONTH = 30; // Standard conversion: 30 days = 1 month
+
+    /**
+     * Convert days to months (for payment plan duration)
+     * Uses 30 days per month for calculation purposes
+     */
+    public static function daysToMonths(int $days): float
+    {
+        return round($days / self::DAYS_PER_MONTH, 2);
+    }
 
     /**
      * Calculate interest for an invoice
      * Upfront interest: 3.5% * payment_plan_duration months * principal_amount
      * Plus overdue interest: 3.5% per month after grace period
+     * Note: payment_plan_duration is stored in months in the database
      */
     public function calculateInterest(Invoice $invoice): float
     {

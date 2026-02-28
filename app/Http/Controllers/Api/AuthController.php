@@ -117,10 +117,18 @@ class AuthController extends Controller
             'phone' => 'nullable|string',
             'address' => 'nullable|string',
             'minimum_purchase_amount' => 'nullable|numeric|min:0',
-            'payment_plan_duration' => 'nullable|integer|min:1|max:36',
+            'payment_plan_duration' => 'nullable|integer|min:1', // Accept days
+            'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
             'kyc_documents' => 'nullable|array',
             'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
+
+        // Convert days to months if payment_plan_duration is in days
+        $paymentPlanDuration = $request->payment_plan_duration ?? 180; // Default to 180 days (6 months)
+        $unit = $request->payment_plan_duration_unit ?? 'days';
+        if ($unit === 'days') {
+            $paymentPlanDuration = \App\Services\InterestService::daysToMonths($paymentPlanDuration);
+        }
 
         $customer = Customer::create([
             'business_name' => $request->business_name,
@@ -130,7 +138,7 @@ class AuthController extends Controller
             'phone' => $request->phone,
             'address' => $request->address,
             'minimum_purchase_amount' => $request->minimum_purchase_amount ?? 0,
-            'payment_plan_duration' => $request->payment_plan_duration ?? 6,
+            'payment_plan_duration' => $paymentPlanDuration, // Stored as months
             'approval_status' => 'pending', // Requires admin approval
             'status' => 'inactive', // Inactive until approved
         ]);

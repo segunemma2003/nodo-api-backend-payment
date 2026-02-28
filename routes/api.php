@@ -104,6 +104,10 @@ Route::prefix('admin')->group(function () {
     Route::patch('/invoices/{id}/status', [AdminController::class, 'updateInvoiceStatus']);
     Route::patch('/invoices/{id}/mark-paid', [AdminController::class, 'markInvoicePaid']);
     
+    // Customer Owed Amount Management
+    Route::patch('/customers/{customerId}/owed-amount', [AdminController::class, 'updateCustomerOwedAmount']);
+    Route::patch('/customers/{customerId}/invoices/{invoiceId}/owed-amount', [AdminController::class, 'updateCustomerInvoiceOwedAmount']);
+    
     // Business Management
     Route::post('/businesses', [AdminController::class, 'createBusiness']);
     Route::get('/businesses', [AdminController::class, 'getBusinesses']);

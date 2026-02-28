@@ -151,8 +151,7 @@ class InvoiceCreatedNotification extends Notification implements ShouldQueue
             // Use the frontend URL or default to the specified root URL
             $frontendUrl = env('FRONTEND_URL', 'https://fsscredit.foodstuff.store');
             $paymentLink = rtrim($frontendUrl, '/') . '/checkout/' . $this->invoice->slug;
-            $mail->line('**Payment Link:** ' . $paymentLink)
-                ->action('Pay Invoice', $paymentLink);
+            $mail->line('**Payment Link:** ' . $paymentLink);
         }
 
         $mail->line('Thank you!');
