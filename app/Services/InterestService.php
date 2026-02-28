@@ -22,8 +22,9 @@ class InterestService
 
     /**
      * Calculate interest for an invoice
-     * Upfront interest: 3.5% * payment_plan_duration months * principal_amount
-     * Plus overdue interest: 3.5% per month after grace period
+     * Interest is calculated per product/item, not on the total amount
+     * Upfront interest: For each item: (item_price * quantity) * 3.5% * payment_plan_duration months
+     * Plus overdue interest: 3.5% per month after grace period (calculated on principal_amount)
      * Note: payment_plan_duration is stored in months in the database
      */
     public function calculateInterest(Invoice $invoice): float
@@ -35,8 +36,26 @@ class InterestService
         $paymentPlanDuration = $invoice->payment_plan_duration ?? 6;
         $principalAmount = $invoice->principal_amount;
         
-        // Upfront interest: 3.5% * number of months * principal amount
-        $upfrontInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $paymentPlanDuration;
+        // Get items from invoice transaction metadata
+        $items = $invoice->getItems();
+        
+        $upfrontInterest = 0;
+        
+        if (!empty($items) && is_array($items)) {
+            // Calculate interest per product/item
+            foreach ($items as $item) {
+                $itemPrice = floatval($item['price'] ?? 0);
+                $quantity = intval($item['quantity'] ?? 1);
+                $itemTotal = $itemPrice * $quantity;
+                
+                // Interest per item: (item_price * quantity) * 3.5% * payment_plan_duration
+                $itemInterest = $itemTotal * self::MONTHLY_INTEREST_RATE * $paymentPlanDuration;
+                $upfrontInterest += $itemInterest;
+            }
+        } else {
+            // Fallback: If no items found, calculate on total principal amount (backward compatibility)
+            $upfrontInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $paymentPlanDuration;
+        }
         
         // Check if invoice is overdue (past grace period)
         $now = Carbon::now();
@@ -53,8 +72,21 @@ class InterestService
                 $monthsOverdue = 1;
             }
             
-            // Add 3.5% per month for each month overdue
-            $overdueInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
+            // Overdue interest: Calculate per item if items exist, otherwise on total
+            if (!empty($items) && is_array($items)) {
+                foreach ($items as $item) {
+                    $itemPrice = floatval($item['price'] ?? 0);
+                    $quantity = intval($item['quantity'] ?? 1);
+                    $itemTotal = $itemPrice * $quantity;
+                    
+                    // Overdue interest per item: (item_price * quantity) * 3.5% * months_overdue
+                    $itemOverdueInterest = $itemTotal * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
+                    $overdueInterest += $itemOverdueInterest;
+                }
+            } else {
+                // Fallback: Calculate on total principal amount
+                $overdueInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
+            }
         }
 
         $totalInterest = $upfrontInterest + $overdueInterest;
