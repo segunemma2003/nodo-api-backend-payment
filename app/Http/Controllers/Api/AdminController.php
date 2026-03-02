@@ -168,6 +168,11 @@ class AdminController extends Controller
                 ->paginate(20);
         });
 
+        // Update balances for each customer to ensure they're current
+        foreach ($customers->items() as $customer) {
+            $customer->updateBalances();
+        }
+
         return response()->json($customers);
     }
 

@@ -267,18 +267,25 @@ export default UpdateOwedAmountForm;
    - **Increase**: Set `amount_owed` to a higher value (e.g., add fees, charges)
    - Example: If customer currently owes 10,000 and you set `amount_owed` to 5,000, the system automatically creates an adjustment for -5,000
 
-4. **Automatic Balance Recalculation**: After updating, the customer's `current_balance` and `available_balance` are **automatically recalculated**:
+4. **Automatic Balance Recalculation & Available Balance**: After updating, the customer's `current_balance` and `available_balance` are **automatically recalculated**:
    - `current_balance` = total of all unpaid invoices + credit not repaid
    - `available_balance` = `credit_limit` - `current_balance`
-   - Example: If credit_limit is 2,000,000 and amount_owed is 5,000, then available_balance = 1,995,000
+   - **YES, the amount owed IS deducted from available_balance automatically**
+   - Example: If credit_limit is 2,000,000 and amount_owed is 5,000, then:
+     - `current_balance` = 5,000
+     - `available_balance` = 2,000,000 - 5,000 = **1,995,000** ✅
 
-5. **No Invoice Needed**: Unlike the invoice-specific endpoint, you don't need to know which invoice to update. Just set the total amount the customer should owe, and the system handles the rest.
+5. **Available Balance in Admin Customer API**: The `available_balance` is **included** in the admin customer API response. When you call:
+   - `GET /api/admin/customers/{id}` - Returns full customer object including `available_balance`
+   - The balance is automatically recalculated before returning, so it's always up-to-date
 
-6. **Audit Trail**: All adjustments are logged with the admin user ID, previous balance, new balance, difference, and reason for audit purposes.
+6. **No Invoice Needed**: Unlike the invoice-specific endpoint, you don't need to know which invoice to update. Just set the total amount the customer should owe, and the system handles the rest.
 
-7. **Cache Invalidation**: Customer and invoice caches are automatically cleared after updates to ensure data consistency.
+7. **Audit Trail**: All adjustments are logged with the admin user ID, previous balance, new balance, difference, and reason for audit purposes.
 
-8. **Repayment API**: For processing actual customer payments, use the repayment API endpoints (already implemented). This endpoint is specifically for admin adjustments to total owed amounts.
+8. **Cache Invalidation**: Customer and invoice caches are automatically cleared after updates to ensure data consistency.
+
+9. **Repayment API**: For processing actual customer payments, use the repayment API endpoints (already implemented). This endpoint is specifically for admin adjustments to total owed amounts.
 
 ## Testing with cURL
 
