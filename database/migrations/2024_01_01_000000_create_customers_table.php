@@ -22,7 +22,8 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->text('address')->nullable();
             $table->decimal('minimum_purchase_amount', 15, 2);
-            $table->integer('payment_plan_duration'); // in months
+            // Store payment plan duration in months as decimal (e.g. 0.83 months for 25 days)
+            $table->decimal('payment_plan_duration', 5, 2);
             $table->decimal('credit_limit', 15, 2)->default(0);
             $table->decimal('current_balance', 15, 2)->default(0);
             $table->decimal('available_balance', 15, 2)->default(0);

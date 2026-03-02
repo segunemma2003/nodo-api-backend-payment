@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\InterestService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -45,12 +46,32 @@ class Customer extends Authenticatable
 
     protected $casts = [
         'minimum_purchase_amount' => 'decimal:2',
+        'payment_plan_duration' => 'decimal:2', // stored in months
         'credit_limit' => 'decimal:2',
         'current_balance' => 'decimal:2',
         'available_balance' => 'decimal:2',
         'kyc_documents' => 'array',
         'password' => 'hashed',
     ];
+
+    // Expose both months and days in API responses
+    protected $appends = [
+        'payment_plan_duration_months',
+        'payment_plan_duration_days',
+    ];
+
+    public function getPaymentPlanDurationMonthsAttribute(): float
+    {
+        // Base value is already stored in months
+        return (float) $this->attributes['payment_plan_duration'];
+    }
+
+    public function getPaymentPlanDurationDaysAttribute(): int
+    {
+        $months = (float) $this->attributes['payment_plan_duration'];
+
+        return (int) round($months * InterestService::DAYS_PER_MONTH);
+    }
 
     public function invoices(): HasMany
     {
