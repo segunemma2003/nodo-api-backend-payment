@@ -175,20 +175,25 @@ class Customer extends Authenticatable
             return [];
         }
 
+        try {
+            $disk = Storage::disk('s3');
+        } catch (\Throwable $e) {
+            // S3 not configured or driver package missing — return raw paths as fallback
+            return $documents;
+        }
+
         $urls = [];
         foreach ($documents as $key => $path) {
             if (is_string($key) && !empty($path)) {
-                // Structured format: { "cac_document": "path", ... }
                 try {
-                    $urls[$key] = Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(60));
-                } catch (\Exception $e) {
+                    $urls[$key] = $disk->temporaryUrl($path, now()->addMinutes(60));
+                } catch (\Throwable $e) {
                     $urls[$key] = null;
                 }
             } elseif (is_int($key) && !empty($path)) {
-                // Legacy flat array format
                 try {
-                    $urls[] = Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(60));
-                } catch (\Exception $e) {
+                    $urls[] = $disk->temporaryUrl($path, now()->addMinutes(60));
+                } catch (\Throwable $e) {
                     $urls[] = null;
                 }
             }

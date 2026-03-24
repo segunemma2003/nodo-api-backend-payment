@@ -165,14 +165,9 @@ class AdminController extends Controller
 
     public function getCustomers(Request $request)
     {
-        $page = $request->get('page', 1);
-        $cacheKey = 'admin_customers_page_' . $page;
-
-        $customers = Cache::remember($cacheKey, 300, function () {
-            return Customer::withCount('invoices')
-                ->orderBy('created_at', 'desc')
-                ->paginate(20);
-        });
+        $customers = Customer::withCount('invoices')
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
 
         // Update balances and append KYC URLs for each customer
         foreach ($customers->items() as $customer) {
