@@ -17,13 +17,15 @@ class UploadFileToS3Job implements ShouldQueue
     protected $s3Path;
     protected $model;
     protected $field;
+    protected $category;
 
-    public function __construct($filePath, $s3Path, $model = null, $field = null)
+    public function __construct($filePath, $s3Path, $model = null, $field = null, $category = null)
     {
         $this->filePath = $filePath;
         $this->s3Path = $s3Path;
         $this->model = $model;
         $this->field = $field;
+        $this->category = $category;
     }
 
     public function handle(): void
@@ -31,10 +33,18 @@ class UploadFileToS3Job implements ShouldQueue
         if (Storage::disk('local')->exists($this->filePath)) {
             $fileContent = Storage::disk('local')->get($this->filePath);
             Storage::disk('s3')->put($this->s3Path, $fileContent);
-            
+
             if ($this->model && $this->field) {
+                $this->model->refresh();
                 $currentValue = $this->model->{$this->field};
-                if (is_array($currentValue)) {
+
+                if ($this->category !== null) {
+                    // Structured format: { "cac_document": "path", ... }
+                    $structured = is_array($currentValue) ? $currentValue : [];
+                    $structured[$this->category] = $this->s3Path;
+                    $this->model->{$this->field} = $structured;
+                } elseif (is_array($currentValue)) {
+                    // Legacy flat array format
                     $updatedPaths = [];
                     foreach ($currentValue as $path) {
                         if ($path === $this->filePath) {
@@ -49,7 +59,7 @@ class UploadFileToS3Job implements ShouldQueue
                 }
                 $this->model->save();
             }
-            
+
             Storage::disk('local')->delete($this->filePath);
         }
     }

@@ -57,8 +57,11 @@ class AdminController extends Controller
             'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
             'virtual_account_number' => 'nullable|string|unique:customers,virtual_account_number',
             'virtual_account_bank' => 'nullable|string',
-            'kyc_documents' => 'nullable|array',
-            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'cac_document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'director_id' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'authorization_letter' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'proof_of_address' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'bank_statement' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
         // Convert days to months if payment_plan_duration is in days
@@ -84,10 +87,7 @@ class AdminController extends Controller
         ]);
 
         // Dispatch job to create Paystack virtual account asynchronously if not provided manually
-        // This doesn't block the customer creation process
-        // Matches the behavior of normal customer registration
         if (!$request->virtual_account_number) {
-            // Use the injected PaystackService (same as normal registration)
             if ($this->paystackService->isConfigured()) {
                 CreateVirtualAccountJob::dispatch($customer);
                 Log::info('Virtual account creation job dispatched for admin-created customer', [
@@ -101,7 +101,6 @@ class AdminController extends Controller
                 ]);
             }
         } else {
-            // Virtual account provided manually - log it
             Log::info('Virtual account provided manually for admin-created customer', [
                 'customer_id' => $customer->id,
                 'email' => $customer->email,
@@ -113,15 +112,22 @@ class AdminController extends Controller
         // Calculate and set credit limit
         $this->creditLimitService->updateCustomerCreditLimit($customer);
 
-        if ($request->hasFile('kyc_documents')) {
-            $kycPaths = [];
-            foreach ($request->file('kyc_documents') as $document) {
+        // Handle categorized KYC documents
+        $kycCategories = ['cac_document', 'director_id', 'authorization_letter', 'proof_of_address', 'bank_statement'];
+        $kycDocuments = [];
+
+        foreach ($kycCategories as $category) {
+            if ($request->hasFile($category)) {
+                $document = $request->file($category);
                 $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
+                $kycDocuments[$category] = $s3Path;
+                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
             }
-            $customer->kyc_documents = $kycPaths;
+        }
+
+        if (!empty($kycDocuments)) {
+            $customer->kyc_documents = $kycDocuments;
             $customer->save();
         }
 
@@ -168,9 +174,10 @@ class AdminController extends Controller
                 ->paginate(20);
         });
 
-        // Update balances for each customer to ensure they're current
+        // Update balances and append KYC URLs for each customer
         foreach ($customers->items() as $customer) {
             $customer->updateBalances();
+            $customer->setAttribute('kyc_document_urls', $customer->getKycDocumentUrls());
         }
 
         return response()->json($customers);
@@ -190,6 +197,7 @@ class AdminController extends Controller
 
         return response()->json([
             'customer' => $customer,
+            'kyc_document_urls' => $customer->getKycDocumentUrls(),
         ]);
     }
 
@@ -352,6 +360,7 @@ class AdminController extends Controller
         return response()->json([
             'message' => 'Customer approval status updated successfully',
             'customer' => $customer,
+            'kyc_document_urls' => $customer->getKycDocumentUrls(),
         ]);
     }
 
@@ -371,8 +380,11 @@ class AdminController extends Controller
             'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
             'virtual_account_number' => 'nullable|string|unique:customers,virtual_account_number,' . $id,
             'virtual_account_bank' => 'nullable|string',
-            'kyc_documents' => 'nullable|array',
-            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'cac_document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'director_id' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'authorization_letter' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'proof_of_address' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'bank_statement' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
         if ($request->has('business_name')) {
@@ -397,13 +409,12 @@ class AdminController extends Controller
             $customer->minimum_purchase_amount = $request->minimum_purchase_amount;
         }
         if ($request->has('payment_plan_duration')) {
-            // Convert days to months if payment_plan_duration is in days
             $paymentPlanDuration = $request->payment_plan_duration;
             $unit = $request->payment_plan_duration_unit ?? 'days';
             if ($unit === 'days') {
                 $paymentPlanDuration = \App\Services\InterestService::daysToMonths($paymentPlanDuration);
             }
-            $customer->payment_plan_duration = $paymentPlanDuration; // Stored as months
+            $customer->payment_plan_duration = $paymentPlanDuration;
         }
         if ($request->has('virtual_account_number')) {
             $customer->virtual_account_number = $request->virtual_account_number;
@@ -416,20 +427,31 @@ class AdminController extends Controller
             $this->creditLimitService->updateCustomerCreditLimit($customer);
         }
 
-        if ($request->hasFile('kyc_documents')) {
-            $kycPaths = $customer->kyc_documents ?? [];
-            foreach ($request->file('kyc_documents') as $document) {
+        // Handle categorized KYC documents (merge with existing)
+        $kycCategories = ['cac_document', 'director_id', 'authorization_letter', 'proof_of_address', 'bank_statement'];
+        $kycDocuments = $customer->kyc_documents ?? [];
+        if (!is_array($kycDocuments)) {
+            $kycDocuments = [];
+        }
+        $hasNewDocs = false;
+
+        foreach ($kycCategories as $category) {
+            if ($request->hasFile($category)) {
+                $document = $request->file($category);
                 $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
+                $kycDocuments[$category] = $s3Path;
+                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
+                $hasNewDocs = true;
             }
-            $customer->kyc_documents = $kycPaths;
+        }
+
+        if ($hasNewDocs) {
+            $customer->kyc_documents = $kycDocuments;
         }
 
         $customer->save();
         Cache::forget('admin_customer_' . $id);
-        // Clear all customer list page caches (clear first 20 pages as reasonable limit)
         for ($page = 1; $page <= 20; $page++) {
             Cache::forget('admin_customers_page_' . $page);
         }
@@ -437,6 +459,7 @@ class AdminController extends Controller
         return response()->json([
             'message' => 'Customer updated successfully',
             'customer' => $customer,
+            'kyc_document_urls' => $customer->getKycDocumentUrls(),
         ]);
     }
 

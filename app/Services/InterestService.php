@@ -54,7 +54,7 @@ class InterestService
             }
         } else {
             // Fallback: If no items found, calculate on total principal amount (backward compatibility)
-            $upfrontInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $paymentPlanDuration;
+        $upfrontInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $paymentPlanDuration;
         }
         
         // Check if invoice is overdue (past grace period)
@@ -85,7 +85,7 @@ class InterestService
                 }
             } else {
                 // Fallback: Calculate on total principal amount
-                $overdueInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
+            $overdueInterest = $principalAmount * self::MONTHLY_INTEREST_RATE * $monthsOverdue;
             }
         }
 

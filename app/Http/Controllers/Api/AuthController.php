@@ -119,8 +119,11 @@ class AuthController extends Controller
             'minimum_purchase_amount' => 'nullable|numeric|min:0',
             'payment_plan_duration' => 'nullable|integer|min:1', // Accept days
             'payment_plan_duration_unit' => 'nullable|in:days,months', // Default to days
-            'kyc_documents' => 'nullable|array',
-            'kyc_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'cac_document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'director_id' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'authorization_letter' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'proof_of_address' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'bank_statement' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
         // Convert days to months if payment_plan_duration is in days
@@ -156,16 +159,22 @@ class AuthController extends Controller
             ]);
         }
 
-        // Handle KYC documents if provided
-        if ($request->hasFile('kyc_documents')) {
-            $kycPaths = [];
-            foreach ($request->file('kyc_documents') as $document) {
+        // Handle categorized KYC documents
+        $kycCategories = ['cac_document', 'director_id', 'authorization_letter', 'proof_of_address', 'bank_statement'];
+        $kycDocuments = [];
+
+        foreach ($kycCategories as $category) {
+            if ($request->hasFile($category)) {
+                $document = $request->file($category);
                 $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
+                $kycDocuments[$category] = $s3Path;
+                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
             }
-            $customer->kyc_documents = $kycPaths;
+        }
+
+        if (!empty($kycDocuments)) {
+            $customer->kyc_documents = $kycDocuments;
             $customer->save();
         }
 

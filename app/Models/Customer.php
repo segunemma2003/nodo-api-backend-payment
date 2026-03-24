@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class Customer extends Authenticatable
 {
@@ -165,6 +166,34 @@ class Customer extends Authenticatable
     public function verifyCvv(string $cvv): bool
     {
         return $this->cvv === $cvv;
+    }
+
+    public function getKycDocumentUrls(): array
+    {
+        $documents = $this->kyc_documents;
+        if (empty($documents) || !is_array($documents)) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($documents as $key => $path) {
+            if (is_string($key) && !empty($path)) {
+                // Structured format: { "cac_document": "path", ... }
+                try {
+                    $urls[$key] = Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(60));
+                } catch (\Exception $e) {
+                    $urls[$key] = null;
+                }
+            } elseif (is_int($key) && !empty($path)) {
+                // Legacy flat array format
+                try {
+                    $urls[] = Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(60));
+                } catch (\Exception $e) {
+                    $urls[] = null;
+                }
+            }
+        }
+        return $urls;
     }
 
     protected static function boot()
