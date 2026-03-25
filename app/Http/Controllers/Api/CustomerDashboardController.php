@@ -666,10 +666,10 @@ class CustomerDashboardController extends Controller
         if ($request->hasFile('kyc_documents')) {
             $kycPaths = $customer->kyc_documents ?? [];
             foreach ($request->file('kyc_documents') as $document) {
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents');
+                $tempS3Path = $document->store('temp/kyc_documents/customer_' . $customer->id, 's3');
+                $finalS3Path = 'kyc_documents/customer_' . $customer->id . '/' . basename($tempS3Path);
+                $kycPaths[] = $finalS3Path;
+                \App\Jobs\UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $customer, 'kyc_documents');
             }
             $customer->kyc_documents = $kycPaths;
         }

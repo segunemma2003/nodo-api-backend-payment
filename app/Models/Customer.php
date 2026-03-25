@@ -47,7 +47,7 @@ class Customer extends Authenticatable
 
     protected $casts = [
         'minimum_purchase_amount' => 'decimal:2',
-        'payment_plan_duration' => 'decimal:2', // stored in months
+        'payment_plan_duration' => 'float', // stored in months
         'credit_limit' => 'decimal:2',
         'current_balance' => 'decimal:2',
         'available_balance' => 'decimal:2',

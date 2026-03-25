@@ -33,7 +33,7 @@ class InvoiceService
 
         try {
             $purchaseDate = $purchaseDate ?? Carbon::now();
-            $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+            $paymentPlanDuration = (float) ($customer->payment_plan_duration ?? 6);
             
             // Calculate due_date from purchase_date + payment_plan_duration months
             if (!$dueDate) {
@@ -102,7 +102,7 @@ class InvoiceService
             if ($businessCustomer->linked_customer_id) {
                 $customer = Customer::find($businessCustomer->linked_customer_id);
                 if ($customer) {
-                    $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+                    $paymentPlanDuration = (float) ($customer->payment_plan_duration ?? 6);
                 }
             }
             

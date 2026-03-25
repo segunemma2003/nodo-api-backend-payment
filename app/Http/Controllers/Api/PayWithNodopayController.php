@@ -117,7 +117,7 @@ class PayWithFscreditController extends Controller
                 ? \Carbon\Carbon::parse($request->purchase_date) 
                 : \Carbon\Carbon::now();
 
-            $paymentPlanDuration = $customer->payment_plan_duration ?? 6;
+            $paymentPlanDuration = (float) ($customer->payment_plan_duration ?? 6);
             $dueDate = $purchaseDate->copy()->addMonths($paymentPlanDuration);
 
             $invoice = $this->invoiceService->createInvoice(

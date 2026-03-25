@@ -119,10 +119,10 @@ class AdminController extends Controller
         foreach ($kycCategories as $category) {
             if ($request->hasFile($category)) {
                 $document = $request->file($category);
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
-                $kycDocuments[$category] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
+                $tempS3Path = $document->store('temp/kyc_documents/customer_' . $customer->id, 's3');
+                $finalS3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempS3Path);
+                $kycDocuments[$category] = $finalS3Path;
+                UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $customer, 'kyc_documents', $category);
             }
         }
 
@@ -433,10 +433,10 @@ class AdminController extends Controller
         foreach ($kycCategories as $category) {
             if ($request->hasFile($category)) {
                 $document = $request->file($category);
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
-                $kycDocuments[$category] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
+                $tempS3Path = $document->store('temp/kyc_documents/customer_' . $customer->id, 's3');
+                $finalS3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempS3Path);
+                $kycDocuments[$category] = $finalS3Path;
+                UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $customer, 'kyc_documents', $category);
                 $hasNewDocs = true;
             }
         }
@@ -499,10 +499,10 @@ class AdminController extends Controller
         if ($request->hasFile('kyc_documents')) {
             $kycPaths = $business->kyc_documents ?? [];
             foreach ($request->file('kyc_documents') as $document) {
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $business, 'kyc_documents');
+                $tempS3Path = $document->store('temp/kyc_documents/business_' . $business->id, 's3');
+                $finalS3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempS3Path);
+                $kycPaths[] = $finalS3Path;
+                UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $business, 'kyc_documents');
             }
             $business->kyc_documents = $kycPaths;
         }
@@ -626,10 +626,10 @@ class AdminController extends Controller
         if ($request->hasFile('kyc_documents')) {
             $kycPaths = [];
             foreach ($request->file('kyc_documents') as $document) {
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempPath);
-                $kycPaths[] = $s3Path;
-                UploadFileToS3Job::dispatch($tempPath, $s3Path, $business, 'kyc_documents');
+                $tempS3Path = $document->store('temp/kyc_documents/business_' . $business->id, 's3');
+                $finalS3Path = 'kyc_documents/business_' . $business->id . '/' . basename($tempS3Path);
+                $kycPaths[] = $finalS3Path;
+                UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $business, 'kyc_documents');
             }
             $business->kyc_documents = $kycPaths;
             $business->save();

@@ -13,16 +13,16 @@ class UploadFileToS3Job implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $filePath;
-    protected $s3Path;
+    protected $tempS3Path;
+    protected $finalS3Path;
     protected $model;
     protected $field;
     protected $category;
 
-    public function __construct($filePath, $s3Path, $model = null, $field = null, $category = null)
+    public function __construct($tempS3Path, $finalS3Path, $model = null, $field = null, $category = null)
     {
-        $this->filePath = $filePath;
-        $this->s3Path = $s3Path;
+        $this->tempS3Path = $tempS3Path;
+        $this->finalS3Path = $finalS3Path;
         $this->model = $model;
         $this->field = $field;
         $this->category = $category;
@@ -30,37 +30,37 @@ class UploadFileToS3Job implements ShouldQueue
 
     public function handle(): void
     {
-        if (Storage::disk('local')->exists($this->filePath)) {
-            $fileContent = Storage::disk('local')->get($this->filePath);
-            Storage::disk('s3')->put($this->s3Path, $fileContent);
+        $s3 = Storage::disk('s3');
 
-            if ($this->model && $this->field) {
-                $this->model->refresh();
-                $currentValue = $this->model->{$this->field};
+        if (!$s3->exists($this->tempS3Path)) {
+            return;
+        }
 
-                if ($this->category !== null) {
-                    // Structured format: { "cac_document": "path", ... }
-                    $structured = is_array($currentValue) ? $currentValue : [];
-                    $structured[$this->category] = $this->s3Path;
-                    $this->model->{$this->field} = $structured;
-                } elseif (is_array($currentValue)) {
-                    // Legacy flat array format
-                    $updatedPaths = [];
-                    foreach ($currentValue as $path) {
-                        if ($path === $this->filePath) {
-                            $updatedPaths[] = $this->s3Path;
-                        } else {
-                            $updatedPaths[] = $path;
-                        }
+        // Move from temp to final path within S3
+        $s3->move($this->tempS3Path, $this->finalS3Path);
+
+        if ($this->model && $this->field) {
+            $this->model->refresh();
+            $currentValue = $this->model->{$this->field};
+
+            if ($this->category !== null) {
+                $structured = is_array($currentValue) ? $currentValue : [];
+                $structured[$this->category] = $this->finalS3Path;
+                $this->model->{$this->field} = $structured;
+            } elseif (is_array($currentValue)) {
+                $updatedPaths = [];
+                foreach ($currentValue as $path) {
+                    if ($path === $this->tempS3Path) {
+                        $updatedPaths[] = $this->finalS3Path;
+                    } else {
+                        $updatedPaths[] = $path;
                     }
-                    $this->model->{$this->field} = $updatedPaths;
-                } else {
-                    $this->model->{$this->field} = $this->s3Path;
                 }
-                $this->model->save();
+                $this->model->{$this->field} = $updatedPaths;
+            } else {
+                $this->model->{$this->field} = $this->finalS3Path;
             }
-
-            Storage::disk('local')->delete($this->filePath);
+            $this->model->save();
         }
     }
 }

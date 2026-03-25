@@ -166,10 +166,10 @@ class AuthController extends Controller
         foreach ($kycCategories as $category) {
             if ($request->hasFile($category)) {
                 $document = $request->file($category);
-                $tempPath = $document->store('temp/kyc_documents', 'local');
-                $s3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempPath);
-                $kycDocuments[$category] = $s3Path;
-                \App\Jobs\UploadFileToS3Job::dispatch($tempPath, $s3Path, $customer, 'kyc_documents', $category);
+                $tempS3Path = $document->store('temp/kyc_documents/customer_' . $customer->id, 's3');
+                $finalS3Path = 'kyc_documents/customer_' . $customer->id . '/' . $category . '_' . basename($tempS3Path);
+                $kycDocuments[$category] = $finalS3Path;
+                \App\Jobs\UploadFileToS3Job::dispatch($tempS3Path, $finalS3Path, $customer, 'kyc_documents', $category);
             }
         }
 
