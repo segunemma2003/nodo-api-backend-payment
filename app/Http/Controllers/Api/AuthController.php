@@ -185,6 +185,10 @@ class AuthController extends Controller
                 ->notify(new CustomerRegistrationNotification($customer));
             Notification::route('mail', 'accountings@foodstuff.store')
                 ->notify(new CustomerRegistrationNotification($customer));
+            Notification::route('mail', 'operations@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
+            Notification::route('mail', 'sales@foodstuff.store')
+                ->notify(new CustomerRegistrationNotification($customer));
         } catch (\Exception $e) {
             Log::warning('Failed to send customer registration email to accounting: ' . $e->getMessage(), [
                 'customer_id' => $customer->id,

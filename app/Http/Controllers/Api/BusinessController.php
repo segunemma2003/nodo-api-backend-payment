@@ -236,6 +236,10 @@ class BusinessController extends Controller
                     ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
                 Notification::route('mail', 'accountings@foodstuff.store')
                     ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
+                Notification::route('mail', 'operations@foodstuff.store')
+                    ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
+                Notification::route('mail', 'sales@foodstuff.store')
+                    ->notify(new BusinessCustomerCreatedNotification($businessCustomer, $business));
             } catch (\Exception $e) {
                 Log::warning('Failed to send business customer creation email: ' . $e->getMessage(), [
                     'business_customer_id' => $businessCustomer->id,
@@ -338,6 +342,10 @@ class BusinessController extends Controller
             Notification::route('mail', 'accounting@foodstuff.store')
                 ->notify(new InvoiceCreatedNotification($invoice));
             Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new InvoiceCreatedNotification($invoice));
+            Notification::route('mail', 'operations@foodstuff.store')
+                ->notify(new InvoiceCreatedNotification($invoice));
+            Notification::route('mail', 'sales@foodstuff.store')
                 ->notify(new InvoiceCreatedNotification($invoice));
         } catch (\Exception $e) {
             Log::warning('Failed to send invoice creation email to accounting: ' . $e->getMessage(), [
@@ -852,6 +860,10 @@ class BusinessController extends Controller
             Notification::route('mail', 'accounting@foodstuff.store')
                 ->notify(new BusinessCustomerCreatedNotification($customer, $business));
             Notification::route('mail', 'accountings@foodstuff.store')
+                ->notify(new BusinessCustomerCreatedNotification($customer, $business));
+            Notification::route('mail', 'operations@foodstuff.store')
+                ->notify(new BusinessCustomerCreatedNotification($customer, $business));
+            Notification::route('mail', 'sales@foodstuff.store')
                 ->notify(new BusinessCustomerCreatedNotification($customer, $business));
         } catch (\Exception $e) {
             Log::warning('Failed to send business customer creation email to accounting: ' . $e->getMessage(), [

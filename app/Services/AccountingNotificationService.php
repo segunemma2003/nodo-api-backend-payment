@@ -10,6 +10,8 @@ class AccountingNotificationService
     protected const ACCOUNTING_EMAILS = [
         'accounting@foodstuff.store',
         'accountings@foodstuff.store',
+        'operations@foodstuff.store',
+        'sales@foodstuff.store',
     ];
 
     /**
