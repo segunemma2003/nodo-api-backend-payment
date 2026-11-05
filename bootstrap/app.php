@@ -28,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Report unhandled exceptions to Sentry (no-op unless SENTRY_LARAVEL_DSN is set)
+        \Sentry\Laravel\Integration::handles($exceptions);
+
         // Handle validation exceptions for API routes
         $exceptions->render(function (\Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
